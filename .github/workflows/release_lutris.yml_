@@ -1,0 +1,27 @@
+name: Eve-O Preview Release - lutris script
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  edit-config:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+   
+    - name: Deploy to eks
+      run: |
+        EVE_O_PREVIEW="https://github.com/${{github.repository}}/releases/download/${{github.event.release.tag_name}}/Release-${{github.event.release.tag_name}}-Linux.zip" && \
+        sed -i "s@EVE_O_PREVIEW@${EVE_O_PREVIEW}@g" ./src/eve-o-preview.yaml
+    
+    - uses: actions/upload-release-asset@v1
+      env:
+         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: "./src/eve-o-preview.yaml"
+          asset_name: "eve-o-preview.yaml"
+          asset_content_type: application/yaml

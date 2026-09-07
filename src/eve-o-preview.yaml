@@ -1,0 +1,44 @@
+game_slug: eve-online
+slug: test
+name: EVE-O-Preview
+version: 8.0.2.0
+runner: linux
+script:
+  files:
+  - eveo: 
+      url: EVE_O_PREVIEW
+      filename: EVEOPreview.zip
+  - dotnet8: https://download.visualstudio.microsoft.com/download/pr/f1e7ffc8-c278-4339-b460-517420724524/f36bb75b2e86a52338c4d3a90f8dac9b/windowsdesktop-runtime-8.0.12-win-x64.exe
+  game:
+    exe: $GAMEDIR/eveolaunch.sh
+  installer:
+    - extract:
+        dst: $GAMEDIR/EVEOPreview
+        file: eveo
+    - write_file:
+        file: $GAMEDIR/eveolaunch.sh
+        content: |
+          #!/usr/bin/env bash
+          export WINEPREFIX="$GAMEDIR"
+
+          # Disable esync to avoid a bug that causes high cpu usage
+          export PROTON_NO_ESYNC=1
+
+          cd "$GAMEDIR"
+
+          # We start the launcher by calling the installer again because, otherwise, there is a Javascript exception when calling the actual executable. No idea why.
+          "./runner-wine/bin/wine" "./EVEOPreview/EVE-O-Preview.exe"
+    - chmodx: $GAMEDIR/eveolaunch.sh
+    - execute:
+        disable_runtime: true # With runtime enabled, all certificate validations by winetricks fail
+        description: EVE O Preview
+        command: |
+          set -e
+          export WINE="$(pwd)/runner-wine/bin/wine"
+          export WINEPREFIX="$GAMEDIR"
+
+          "$GAMEDIR/runner-wine/bin/wine" "$dotnet8"
+          #"$GAMEDIR"/runner-wine/bin/wine "./EVEOPreview/EVE-O-Preview.exe"
+          
+          # cleanup
+          rm "$dotnet8"

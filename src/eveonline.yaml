@@ -1,0 +1,54 @@
+game_slug: eve-online
+slug: test
+name: EVE Online
+version: test
+runner: linux
+script:
+  files:
+  - setup:
+      filename: installer.exe
+      url: https://launcher.ccpgames.com/eve-online/release/win32/x64/eve-online-latest+Setup.exe
+  - wine: https://github.com/Kron4ek/Wine-Builds/releases/download/10.0/wine-10.0-staging-amd64.tar.xz
+  - winetricks: https://raw.githubusercontent.com/Winetricks/winetricks/refs/tags/20240105/src/winetricks
+  game:
+    exe: $GAMEDIR/launch.sh
+  installer:
+    - extract:
+        file: wine
+        dst: $GAMEDIR/runner-wine
+    - chmodx: $winetricks
+    - merge:
+        src: setup
+        dst: $GAMEDIR
+    - write_file:
+        file: $GAMEDIR/launch.sh
+        content: |
+          #!/usr/bin/env bash
+          export WINEPREFIX="$GAMEDIR"
+
+          # Disable esync to avoid a bug that causes high cpu usage
+          export PROTON_NO_ESYNC=1
+
+          cd "$GAMEDIR"
+
+          # We start the launcher by calling the installer again because, otherwise, there is a Javascript exception when calling the actual executable. No idea why.
+          "./runner-wine/bin/wine" "./installer.exe"
+    - chmodx: $GAMEDIR/launch.sh
+    - execute:
+        disable_runtime: true # With runtime enabled, all certificate validations by winetricks fail
+        description: Close EVE-O and the launcher after they open. Re-launch the game to install eve.
+        command: |
+          # Lutris is currently in a transition period where they are looking to support umu-launcher + proton fully
+          # As a result, they have not released a new version of wine-ge in a long time, and wine-ge 8 is not working
+          # with the latest version of EVE-O and their installer scripts don't support automatically using a non-wine-ge version of wine.
+          # This script is a hacky workaround to use wine-staging 10 more easily with minimal user action until we can swap back to using a properly support proton-version
+
+          set -e
+          export WINE="$(pwd)/runner-wine/bin/wine"
+          export WINEPREFIX="$GAMEDIR"
+
+          # Begin installation
+          "$winetricks" -q msdelta vkd3d vcrun2022 dxvk2030 
+          "$GAMEDIR"/runner-wine/bin/wine "./installer.exe"
+
+

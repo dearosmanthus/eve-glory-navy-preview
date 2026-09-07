@@ -1,0 +1,24 @@
+EVE-O-Preview 荣耀海军定制版（最终版）
+
+上游源码：EVE-O-Preview 官方仓库
+上游提交：487b4b2c49afb021f40647eb551a3d039d21451f
+最终版本：8.0.2.28-glory-navy-final
+
+定制功能：
+- 缩略图最小尺寸 64×36，宽高 1 像素步进和三个尺寸预设。
+- Ctrl+Alt+左右方向键快速切换 EVE 客户端。
+- Ctrl+Alt+H 快速隐藏/显示全部预览。
+- 客户端单独尺寸的界面、持久化及拖动缩放逻辑。
+- 可命名保存、加载和确认覆盖多套布局方案。
+- 实验性最小化客户端后台恢复（不抢焦点），尽量维持 DWM 预览刷新。
+- 中文界面重新分类与操作提示。
+
+荣耀海军品牌：
+- 由提供的军团图标截图提取荣耀海军徽记。
+- glory-navy-icon.png 为高分辨率图标母图。
+- glory-navy-icon.ico 包含 16、24、32、48、64、128、256 像素的 32 位图标帧。
+- 程序文件、窗口、任务栏、系统托盘和“关于”页均使用荣耀海军徽记。
+- 应用标题固定为“EVE-O-Preview 荣耀海军定制版”。
+
+构建命令示例：
+dotnet publish src\Eve-O-Preview\Eve-O-Preview.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
