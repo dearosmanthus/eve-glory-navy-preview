@@ -60,6 +60,14 @@ namespace EveOPreview.View
 			this.Controls.Add(layout);
 		}
 
+		protected override void OnLoad(EventArgs e)
+		{
+			base.OnLoad(e);
+			// WinForms can leave a modal dialog below its topmost owner (#6190).
+			// Apply this after ShowDialog has assigned Owner and created the HWND.
+			this.TopMost = this.Owner?.TopMost ?? false;
+		}
+
 		internal static bool IsSupportedKey(Keys keyData)
 		{
 			Keys key = keyData & Keys.KeyCode;

@@ -6,7 +6,9 @@
 
 面向荣耀海军成员定制的 EVE-O Preview Windows 多开窗口预览与快捷切换工具。
 
-当前版本：`8.0.2.29-glory-navy-hotkeys`（快捷键增强版）
+当前版本：`8.0.2.30-glory-navy-hotfix`（设置弹窗修复版）
+
+本版修复点击快捷键“设置…”后录键弹窗被置顶主窗口遮挡、主界面看似卡死的问题，详见[修复说明](BUGFIX-8.0.2.30-zh-CN.md)。
 
 ## 下载与使用
 
@@ -64,5 +66,5 @@ dotnet publish src\Eve-O-Preview\Eve-O-Preview.csproj `
 正式发布包会同时提供 `.sha256.txt` 文件。可在 PowerShell 中校验：
 
 ```powershell
-Get-FileHash .\EVE-O-Preview-Glory-Navy-8.0.2.29-win-x64.zip -Algorithm SHA256
+Get-FileHash .\EVE-O-Preview-Glory-Navy-8.0.2.30-win-x64.zip -Algorithm SHA256
 ```

@@ -9,7 +9,7 @@ using EveOPreview.View;
 
 // No package-based test runner is required. All profiles and screenshots are
 // created under an isolated scratch directory; no game windows or input are used.
-internal static class Program
+internal static partial class Program
 {
     private static readonly Assembly App = typeof(MainForm).Assembly;
     private static readonly BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -21,6 +21,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
         scratch = Path.GetFullPath(args.FirstOrDefault() ?? Path.Combine(Path.GetTempPath(), "EveO-HotkeyRegression-" + Guid.NewGuid().ToString("N")));
         Directory.CreateDirectory(scratch);
         screenshots = Path.Combine(scratch, "screenshots-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss"));
@@ -28,15 +29,28 @@ internal static class Program
         string locale = Path.Combine(AppContext.BaseDirectory, "EVE-O-Preview.locale");
         if (File.Exists(locale)) File.Copy(locale, Path.Combine(scratch, "EVE-O-Preview.locale"), true);
         Environment.CurrentDirectory = scratch;
+        if (args.Contains("--settings-child")) Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         if (args.Contains("--preview")) return Preview();
+        if (args.Contains("--settings-child")) return SettingsLifecycleChild(args);
+        if (args.Contains("--settings-only"))
+        {
+            Run("isolated settings lifecycle", SettingsLifecycleTests);
+            return PrintResult();
+        }
         Run("gesture parser", ParserTests);
         Run("legacy/profile persistence", ConfigurationTests);
         Run("real Windows hotkey transactions", TransactionTests);
         Run("fake client hotkey routing", ClientRoutingTests);
         Run("hotkey message handling", NativeHandlerTests);
         Run("settings UI controls", UiTests);
+        Run("isolated settings lifecycle", SettingsLifecycleTests);
+        return PrintResult();
+    }
+
+    private static int PrintResult()
+    {
         Console.WriteLine($"RESULT: {passed} PASS, {failures.Count} FAIL; scratch={scratch}");
         foreach (string failure in failures) Console.WriteLine("FAIL DETAIL: " + failure);
         return failures.Count == 0 ? 0 : 1;

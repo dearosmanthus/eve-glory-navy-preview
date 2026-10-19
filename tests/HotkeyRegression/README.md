@@ -20,3 +20,17 @@ For a visible, isolated UI preview populated with fake client names, append
 `--preview`. This mode does not construct the thumbnail manager or register any
 system shortcuts and can safely run beside an existing EVE-O Preview instance.
 Screenshots from regression mode are generated from real, off-screen form handles.
+
+The settings lifecycle suite also runs the real `MainForm.Show` message loop and
+real presenter/thumbnail manager in four watchdog-protected child processes. Its
+process monitor returns an empty collection and never enumerates the computer's
+game processes. It covers all settings tabs, tray restoration, Set/Cancel/record
+flows, native modal ownership and Z-order, Apply persistence boundaries, and the
+thumbnail DispatcherTimer while the recording dialog is open. The scale factors
+100%, 125%, 150% and 200% use `Control.Scale`; they are layout simulations, not a
+claim of testing those physical monitor DPI configurations.
+
+To run only these scenarios, append `--settings-only`. A 20-second watchdog kills
+only the specific child test process it created, records the last completed step
+under `settings-scale-*/lifecycle-output.txt`, and reports a failure. Modal input
+is delivered directly to owned test dialogs, never through global keyboard input.
