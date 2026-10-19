@@ -21,7 +21,16 @@ internal static partial class Program
     {
         foreach (string scale in new[] { "100", "125", "150", "200" })
         {
-            string childScratch = Path.Combine(scratch, "settings-scale-" + scale);
+            RunIsolatedUiChild("--settings-child", "settings-scale-" + scale,
+                $"real presenter settings lifecycle completes at {scale}% simulated layout scale", scale);
+        }
+        RunIsolatedUiChild("--sync-ui-child", "character-copy-ui", "isolated character-copy dialog lifecycle completes");
+        RunIsolatedUiChild("--presenter-groups-child", "dynamic-group-presenter", "real dynamic-group presenter integration completes");
+    }
+
+    private static void RunIsolatedUiChild(string mode, string directory, string label, string? argument = null)
+    {
+            string childScratch = Path.Combine(scratch, directory);
             using var child = new Process();
             child.StartInfo = new ProcessStartInfo(Environment.ProcessPath!)
             {
@@ -31,12 +40,12 @@ internal static partial class Program
                 CreateNoWindow = true
             };
             child.StartInfo.ArgumentList.Add(childScratch);
-            child.StartInfo.ArgumentList.Add("--settings-child");
-            child.StartInfo.ArgumentList.Add(scale);
+            child.StartInfo.ArgumentList.Add(mode);
+            if (argument != null) child.StartInfo.ArgumentList.Add(argument);
             child.Start();
             Task<string> stdout = child.StandardOutput.ReadToEndAsync();
             Task<string> stderr = child.StandardError.ReadToEndAsync();
-            bool exited = child.WaitForExit(20000);
+            bool exited = child.WaitForExit(45000);
             if (!exited)
             {
                 // This Process was created here with our own test executable and
@@ -51,9 +60,8 @@ internal static partial class Program
             Console.Write(output);
             if (errors.Length > 0) Console.Write(errors);
             Check(exited && child.ExitCode == 0,
-                $"real presenter settings lifecycle completes at {scale}% simulated layout scale" +
-                (exited ? $" (exit {child.ExitCode})" : " (20-second watchdog timeout)"));
-        }
+                label +
+                (exited ? $" (exit {child.ExitCode})" : " (45-second watchdog timeout)"));
     }
 
     private static int SettingsLifecycleChild(string[] args)
@@ -150,7 +158,7 @@ internal static partial class Program
                     Click(form, "ClientHotkeyClearButton");
                     Click(form, "ClientHotkeyApplyButton");
                     tabs.SelectedTab = tabs.TabPages.Cast<TabPage>().Single(x => x.Name == "CycleGroupTabPage");
-                    ExerciseCaptureButton(form, "HotkeyCaptureButton", Keys.Escape);
+                    ExerciseNestedGroupKeyModal(form, save: false, cancelCapture: true);
                     SaveLifecycleScreenshot(form, "advanced-" + language + "-" + percent);
                 }
                 for (int repeat = 0; repeat < 3; repeat++)
@@ -198,6 +206,8 @@ internal static partial class Program
             Console.WriteLine($"MODAL owner={GetWindow(dialog.Handle, 4) == form.Handle}, visible={dialog.Visible}, enabled={dialog.Enabled}, managedTopmost={dialog.TopMost}, nativeTopmost={(GetWindowLong(dialog.Handle, -20) & 8) != 0}, ownerTopmost={form.TopMost}");
             Check(GetWindow(dialog.Handle, 4) == form.Handle && dialog.Visible && dialog.Enabled,
                 buttonName + " capture dialog is visible, enabled and owned by settings");
+            Check(IsWindowEnabled(dialog.Handle) && !IsWindowEnabled(form.Handle),
+                buttonName + " recording dialog natively blocks input to settings");
             Check(!form.TopMost || (GetWindowLong(dialog.Handle, -20) & 8) != 0,
                 buttonName + " capture dialog preserves the settings topmost band");
             Check(IsAboveOwner(dialog.Handle, form.Handle), buttonName + " capture dialog is above its settings owner in native Z-order");
@@ -207,7 +217,7 @@ internal static partial class Program
         Click(form, buttonName);
         Application.DoEvents();
         Console.WriteLine($"MODAL RETURN seen={dialogSeen}, settingsEnabled={form.Enabled}");
-        Check(dialogSeen && form.Enabled, buttonName + " modal accepts/cancels and returns control to settings");
+        Check(dialogSeen && form.Enabled && IsWindowEnabled(form.Handle), buttonName + " modal accepts/cancels and returns control to settings");
     }
 
     private static void ExerciseCaptureRestoreConflict(MainForm form, IThumbnailConfiguration config, object manager)

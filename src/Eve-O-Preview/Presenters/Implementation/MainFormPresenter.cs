@@ -5,6 +5,7 @@ using System.Linq;
 using System.Drawing;
 using System.IO;
 using System.Threading.Tasks;
+using System.Threading;
 using EveOPreview.Configuration;
 using EveOPreview.Configuration.Implementation;
 using EveOPreview.Mediator.Messages;
@@ -32,6 +33,9 @@ namespace EveOPreview.Presenters
 		private int _currentGroup = 1;
 		private IThumbnailManager _hotkeyManager;
 		private string _selectedClientTitle;
+		private bool _settingsDialogActive;
+		private bool _autoAddPosted;
+		private IClientConfigSyncService _clientConfigSyncService;
 		private IThumbnailManager HotkeyManager => this._hotkeyManager ??= this.Controller.Create<IThumbnailManager>();
 		#endregion
 
@@ -64,7 +68,10 @@ namespace EveOPreview.Presenters
 			this.View.SaveProfileRequested = this.SaveProfile;
 			this.View.QuickHotkeysApplyRequested = this.ApplyQuickHotkeys;
 			this.View.ClientHotkeyApplyRequested = this.ApplyClientHotkey;
-			this.View.HotkeyCaptureStateChanged = active => this.HotkeyManager.SetHotkeyCaptureActive(active);
+			this.View.HotkeyCaptureStateChanged = this.OnHotkeyCaptureStateChanged;
+			this.View.CycleGroupsChanged = this.SaveDynamicCycleGroups;
+			this.View.ClientPreviewToggleRequested = this.ToggleClientPreview;
+			this.View.ClientConfigSyncRequested = this.OpenClientConfigSync;
 			this.View.IconName = this._configuration.IconName;
 		}
 
@@ -170,15 +177,7 @@ namespace EveOPreview.Presenters
 
 			this.View.IconName = this._configuration.IconName;
 
-			// Hotkeys tab: populate clients and default group
-			var configuredClients = this._configuration.GetAllKnownClients();
-			this.View.SetAvailableClients(configuredClients);
-			this._currentGroup = 1;
-			this.View.SelectedCycleGroup = this._currentGroup;
-			this.LoadGroupToView(this._currentGroup);
-
-			// Wire group changed handler
-			this.View.SelectedCycleGroupChanged = this.OnSelectedCycleGroupChanged;
+			this.LoadCycleGroupsToView();
 			this.View.EndUpdateUI();
 			this._isLoadingUi = false;
 		}
@@ -384,7 +383,6 @@ namespace EveOPreview.Presenters
 
 			this._configuration.IconName = this.View.IconName;
 
-			this.SaveGroupFromView(this._currentGroup);
 			if (!this.HotkeyManager.TryApplyHotkeys(out string hotkeyError))
 			{
 				this.View.BeginUpdateUI();
@@ -392,7 +390,7 @@ namespace EveOPreview.Presenters
 				{
 					this.View.QuickSwitchEnabled = this._configuration.QuickSwitchEnabled;
 					this.View.QuickHideEnabled = this._configuration.QuickHideEnabled;
-					this.LoadGroupToView(this._currentGroup);
+					this.LoadCycleGroupsToView();
 				}
 				finally { this.View.EndUpdateUI(); }
 				this.ReportHotkeyFailure(hotkeyError);
@@ -408,6 +406,98 @@ namespace EveOPreview.Presenters
 			this.View.QuickSwitchForwardHotkey = this._configuration.QuickSwitchForwardHotkey ?? string.Empty;
 			this.View.QuickSwitchBackwardHotkey = this._configuration.QuickSwitchBackwardHotkey ?? string.Empty;
 			this.View.QuickHideHotkey = this._configuration.QuickHideHotkey ?? string.Empty;
+		}
+
+		private void LoadCycleGroupsToView()
+		{
+			this._configuration.EnsureCycleGroups();
+			this.View.SetCycleGroups(this._configuration.CycleGroups.Select(group => group.DeepClone()).ToList());
+			this.View.AutoAddUngroupedClients = this._configuration.AutoAddUngroupedClients;
+			this.RefreshCycleGroupClients();
+		}
+
+		private void RefreshCycleGroupClients()
+		{
+			var online = this.GetActiveClients() ?? new List<string>();
+			var known = this._configuration.GetAllKnownClients().Concat(online).Distinct(StringComparer.Ordinal).ToList();
+			this.View.RefreshCycleGroupClients(online, known, known.Where(this._configuration.IsThumbnailDisabled).ToList());
+		}
+
+		private void SaveDynamicCycleGroups()
+		{
+			if (this._isLoadingUi) return;
+			this._configuration.CycleGroups = this.View.GetCycleGroups().Select(group => group.DeepClone()).ToList();
+			this._configuration.AutoAddUngroupedClients = this.View.AutoAddUngroupedClients;
+			var removed = this.View.ConsumeRemovedCycleGroupClients();
+			var assigned = new HashSet<string>(this._configuration.CycleGroups.SelectMany(group => group.ClientsOrder.Keys), StringComparer.Ordinal);
+			this._configuration.CycleGroupAutoAddExclusions = this._configuration.CycleGroupAutoAddExclusions
+				.Concat(removed).Where(title => !assigned.Contains(title)).Distinct(StringComparer.Ordinal).ToList();
+			this._configuration.EnsureCycleGroups();
+			this.CommitHotkeyChanges();
+			this.LoadCycleGroupsToView();
+			this.TryAutoAddUngroupedClients();
+		}
+
+		private void OnHotkeyCaptureStateChanged(bool active)
+		{
+			if (active) this._settingsDialogActive = true;
+			this.HotkeyManager.SetHotkeyCaptureActive(active);
+			if (active) return;
+			this._settingsDialogActive = false;
+			// Let the modal's caller finish committing its draft before auto-adding.
+			SynchronizationContext context = SynchronizationContext.Current;
+			if (this._autoAddPosted || context == null) return;
+			this._autoAddPosted = true;
+			context.Post(_ =>
+			{
+				this._autoAddPosted = false;
+				this.TryAutoAddUngroupedClients();
+			}, null);
+		}
+
+		private void TryAutoAddUngroupedClients()
+		{
+			if (this._isLoadingUi || this._settingsDialogActive || !this._configuration.AutoAddUngroupedClients) return;
+			this._configuration.EnsureCycleGroups();
+			var assigned = new HashSet<string>(this._configuration.CycleGroups.SelectMany(group => group.ClientsOrder.Keys), StringComparer.Ordinal);
+			var excluded = new HashSet<string>(this._configuration.CycleGroupAutoAddExclusions, StringComparer.Ordinal);
+			var firstGroup = this._configuration.CycleGroups[0];
+			int order = firstGroup.ClientsOrder.Count == 0 ? 0 : firstGroup.ClientsOrder.Values.Max();
+			bool changed = false;
+			foreach (string title in this.GetActiveClients())
+			{
+				if (string.IsNullOrWhiteSpace(title) || title == "EVE" || assigned.Contains(title) || excluded.Contains(title)) continue;
+				firstGroup.ClientsOrder[title] = ++order;
+				assigned.Add(title);
+				changed = true;
+			}
+			if (!changed) return;
+			if (this.HotkeyManager.TryApplyHotkeys(out string error)) this._configurationStorage.Save();
+			else this.ReportHotkeyFailure(error);
+			this.LoadCycleGroupsToView();
+		}
+
+		private void ToggleClientPreview(string title)
+		{
+			if (string.IsNullOrWhiteSpace(title)) return;
+			bool hidden = !this._configuration.IsThumbnailDisabled(title);
+			this._configuration.ToggleThumbnail(title, hidden);
+			if (this._descriptionsCache.TryGetValue(title, out var description)) description.IsDisabled = hidden;
+			this.View.SetThumbnailHiddenState(title, hidden);
+			this._configurationStorage.Save();
+			this.RefreshCycleGroupClients();
+		}
+
+		private void OpenClientConfigSync(string title)
+		{
+			if (string.IsNullOrWhiteSpace(title)) return;
+			this._configuration.EnsureCycleGroups();
+			var selected = this._configuration.CycleGroups.FirstOrDefault(group => group.Id == this.View.SelectedDynamicCycleGroupId);
+			var groupTitles = selected?.ClientsOrder.OrderBy(entry => entry.Value).Select(entry => entry.Key).ToList() ?? new List<string>();
+			var online = this.GetActiveClients();
+			var known = this._configuration.GetAllKnownClients().Concat(online).Distinct(StringComparer.Ordinal).ToList();
+			this._clientConfigSyncService ??= new ClientConfigSyncService();
+			this.View.ShowClientConfigSyncDialog(this._clientConfigSyncService, title, groupTitles, known, online);
 		}
 
 		private void ApplyQuickHotkeys()
@@ -474,6 +564,8 @@ namespace EveOPreview.Presenters
 			}
 
 			this.View.AddThumbnails(descriptions);
+			this.TryAutoAddUngroupedClients();
+			this.RefreshCycleGroupClients();
 		}
 
 		public void RemoveThumbnails(IList<string> thumbnailTitles)
@@ -495,6 +587,7 @@ namespace EveOPreview.Presenters
 			}
 
 			this.View.RemoveThumbnails(descriptions);
+			this.RefreshCycleGroupClients();
 		}
 
 		private IThumbnailDescription CreateThumbnailDescription(string title)
@@ -511,6 +604,7 @@ namespace EveOPreview.Presenters
 			}
 
 			await this._mediator.Send(new SaveConfiguration());
+			this.RefreshCycleGroupClients();
 		}
 
 		public void UpdateThumbnailSize(Size size)
@@ -665,7 +759,7 @@ namespace EveOPreview.Presenters
 			{
 				this.View.QuickSwitchEnabled = this._configuration.QuickSwitchEnabled;
 				this.View.QuickHideEnabled = this._configuration.QuickHideEnabled;
-				this.LoadGroupToView(this._currentGroup);
+				this.LoadCycleGroupsToView();
 			}
 			finally { this.View.EndUpdateUI(); }
 		}

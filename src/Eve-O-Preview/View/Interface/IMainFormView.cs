@@ -1,4 +1,5 @@
 ﻿using EveOPreview.Configuration;
+using EveOPreview.Services;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -63,6 +64,17 @@ namespace EveOPreview.View
 		void SetAvailableClients(IList<string> clients);
 		IList<string> GetSelectedClientsForCurrentGroup();
 		void SetSelectedClientsForCurrentGroup(IList<string> orderedClients);
+		void SetCycleGroups(IList<CycleGroupDefinition> groups);
+		List<CycleGroupDefinition> GetCycleGroups();
+		string SelectedDynamicCycleGroupId { get; }
+		bool AutoAddUngroupedClients { get; set; }
+		List<string> ConsumeRemovedCycleGroupClients();
+		void RefreshCycleGroupClients(IList<string> onlineTitles, IList<string> knownTitles, IList<string> hiddenTitles);
+		void SetThumbnailHiddenState(string title, bool hidden);
+		void ShowClientConfigSyncDialog(IClientConfigSyncService service, string sourceTitle, IList<string> groupTitles, IList<string> knownTitles, IList<string> onlineTitles);
+		Action CycleGroupsChanged { get; set; }
+		Action<string> ClientPreviewToggleRequested { get; set; }
+		Action<string> ClientConfigSyncRequested { get; set; }
 
 		void SetDocumentationUrl(string url);
 		void SetVersionInfo(string version);

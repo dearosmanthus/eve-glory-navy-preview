@@ -1,5 +1,6 @@
 using EveOPreview.Configuration;
 using EveOPreview.Configuration.Implementation;
+using EveOPreview.Services;
 using MediatR;
 using System;
 using System.Collections.Generic;
@@ -461,6 +462,33 @@ namespace EveOPreview.View
 		public void SetVersionInfo(string version)
 		{
 			this.VersionLabel.Text = version;
+		}
+
+		public void SetThumbnailHiddenState(string title, bool hidden)
+		{
+			bool suppressed = this._suppressEvents;
+			this._suppressEvents = true;
+			try
+			{
+				for (int index = 0; index < this.ThumbnailsList.Items.Count; index++)
+				{
+					if (this.ThumbnailsList.Items[index] is IThumbnailDescription item && item.Title == title)
+					{
+						item.IsDisabled = hidden;
+						this.ThumbnailsList.SetItemChecked(index, hidden);
+						break;
+					}
+				}
+			}
+			finally { this._suppressEvents = suppressed; }
+		}
+
+		public void ShowClientConfigSyncDialog(IClientConfigSyncService service, string sourceTitle, IList<string> groupTitles, IList<string> knownTitles, IList<string> onlineTitles)
+		{
+			using (var dialog = new ClientConfigSyncDialog(service, sourceTitle, groupTitles, knownTitles, onlineTitles))
+			{
+				this.ShowOwnedSettingsDialog(dialog);
+			}
 		}
 
 		public void SetDocumentationUrl(string url)
@@ -972,8 +1000,9 @@ namespace EveOPreview.View
 					descriptionLabel.Size = new Size(434, 179);
 					descriptionLabel.Text =
 						"荣耀海军军团专用的 EVE 多客户端预览与快捷切换工具。\r\n\r\n" +
-						"本程序不会修改 EVE 客户端界面，不会广播键鼠输入；" +
-						"只负责显示预览、调整布局以及把选定客户端切换到前台。";
+						"支持预览、布局和快捷切屏，不广播键鼠输入、不注入游戏。\r\n\r\n" +
+						"角色配置复制仅在选择并确认后写入角色设置文件，先备份再替换；" +
+						"角色名联网识别仅在主动点击时请求，不读取账号或登录文件。";
 				}
 			}
 
@@ -1049,8 +1078,9 @@ namespace EveOPreview.View
 			this.RenameTab(contentTabs, "ThumbnailTabPage", "Size & layout");
 			this.RenameTab(contentTabs, "ZoomTabPage", "Hover zoom");
 			this.RenameTab(contentTabs, "OverlayTabPage", "Appearance");
-			this.RenameTab(contentTabs, "CycleGroupTabPage", "Advanced hotkeys");
+			this.RenameTab(contentTabs, "CycleGroupTabPage", "Switch groups");
 			this.RenameTab(contentTabs, "ClientsTabPage", "Clients");
+			this.InitializeDynamicCycleGroupsControls();
 		}
 
 		private void InitializePerClientSizeControls()
@@ -1431,6 +1461,7 @@ namespace EveOPreview.View
 			}
 			this.ApplyGloryNavyBrandText();
 			this.RefreshHotkeyDisplayText();
+			this.RefreshDynamicCycleGroupLanguage();
 		}
 
 		private void GeneralSettingsPanel_Paint(object sender, PaintEventArgs e)

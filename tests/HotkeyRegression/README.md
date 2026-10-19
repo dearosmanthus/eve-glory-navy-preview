@@ -30,7 +30,21 @@ thumbnail DispatcherTimer while the recording dialog is open. The scale factors
 100%, 125%, 150% and 200% use `Control.Scale`; they are layout simulations, not a
 claim of testing those physical monitor DPI configurations.
 
-To run only these scenarios, append `--settings-only`. A 20-second watchdog kills
+To run only these scenarios, append `--settings-only`. A 45-second watchdog kills
 only the specific child test process it created, records the last completed step
 under `settings-scale-*/lifecycle-output.txt`, and reports a failure. Modal input
 is delivered directly to owned test dialogs, never through global keyboard input.
+
+The suite also covers dynamic groups beyond the legacy five: old/canonical JSON
+precedence, offline membership, deep rollback, the seventh group's real shortcut
+binding, UI add/rename/delete/reorder/drag, and presenter-driven automatic collection
+and bidirectional preview visibility. Nested modal checks use native window enabled
+state, ownership, topmost band and Z-order, not only WinForms' managed Enabled property.
+
+Character-copy file tests use only scratch files, including backup/lock/reparse-point
+failures and cancellation. HTTP is replaced by scripted responses. A separate
+watchdog child exercises the real copy dialog with a fake service, explicit network
+consent, default-No overwrite confirmation, directory-change invalidation, cancel,
+and timeout. It does not scan the user's EVE directories or query real character
+names. A second child isolates the presenter group message loop; closing a previous
+Application.Run loop must not leak WM_QUIT into subsequent ShowDialog scenarios.

@@ -26,6 +26,7 @@ namespace EveOPreview.Configuration.Implementation
 
 			if (!File.Exists(filename))
 			{
+				this._thumbnailConfiguration.EnsureCycleGroups();
 				return;
 			}
 
@@ -52,6 +53,7 @@ namespace EveOPreview.Configuration.Implementation
 
 		public void Save()
 		{
+			this._thumbnailConfiguration.EnsureCycleGroups();
 			string rawData = JsonConvert.SerializeObject(this._thumbnailConfiguration, Formatting.Indented);
 			string filename = this.GetConfigFileName();
 

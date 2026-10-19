@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Runtime.Serialization;
 using System.Windows.Forms;
 using Newtonsoft.Json;
 using EveOPreview.UI.Hotkeys;
@@ -15,6 +16,13 @@ namespace EveOPreview.Configuration.Implementation
 		#region Private fields
 		private bool _enablePerClientThumbnailLayouts;
 		private bool _enableClientLayoutTracking;
+		private List<CycleGroupDefinition> _cycleGroups = new List<CycleGroupDefinition>();
+		private bool _isDeserializingGroups;
+		private bool _hasDeserializedCycleGroups;
+		private List<CycleGroupDefinition> _deserializedCycleGroups;
+		private Dictionary<int, List<string>> _deserializedForwardHotkeys;
+		private Dictionary<int, List<string>> _deserializedBackwardHotkeys;
+		private Dictionary<int, Dictionary<string, int>> _deserializedClientOrders;
 		#endregion
 
 		public ThumbnailConfiguration()
@@ -59,6 +67,8 @@ namespace EveOPreview.Configuration.Implementation
 			{
 				{ "EVE - cycle group 5", 1 },
 			};
+			this.AutoAddUngroupedClients = false;
+			this.CycleGroupAutoAddExclusions = new List<string>();
 
 			// Simple global shortcuts for users who do not need advanced cycle groups.
 			// These only change the foreground EVE client; they do not broadcast input.
@@ -182,50 +192,68 @@ namespace EveOPreview.Configuration.Implementation
 		[JsonIgnore]
 		public Dictionary<string, bool> CycleGroupExclusions { get; set; }
 
-		[JsonProperty("CycleGroup1ForwardHotkeys")]
-		public List<string> CycleGroup1ForwardHotkeys { get; set; }
+		[JsonProperty("CycleGroups", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public List<CycleGroupDefinition> CycleGroups
+		{
+			get => this._cycleGroups;
+			set
+			{
+				if (this._isDeserializingGroups)
+				{
+					this._hasDeserializedCycleGroups = true;
+					this._deserializedCycleGroups = value;
+				}
+				else this._cycleGroups = value;
+			}
+		}
 
-		[JsonProperty("CycleGroup1BackwardHotkeys")]
-		public List<string> CycleGroup1BackwardHotkeys { get; set; }
+		public bool AutoAddUngroupedClients { get; set; }
+		public List<string> CycleGroupAutoAddExclusions { get; set; }
 
-		[JsonProperty("CycleGroup1ClientsOrder")]
-		public Dictionary<string, int> CycleGroup1ClientsOrder { get; set; }
+		[JsonProperty("CycleGroup1ForwardHotkeys", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public List<string> CycleGroup1ForwardHotkeys { get => this.GetLegacyForwardHotkeys(0); set => this.SetLegacyForwardHotkeys(0, value); }
 
-		[JsonProperty("CycleGroup2ForwardHotkeys")]
-		public List<string> CycleGroup2ForwardHotkeys { get; set; }
+		[JsonProperty("CycleGroup1BackwardHotkeys", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public List<string> CycleGroup1BackwardHotkeys { get => this.GetLegacyBackwardHotkeys(0); set => this.SetLegacyBackwardHotkeys(0, value); }
 
-		[JsonProperty("CycleGroup2BackwardHotkeys")]
-		public List<string> CycleGroup2BackwardHotkeys { get; set; }
+		[JsonProperty("CycleGroup1ClientsOrder", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public Dictionary<string, int> CycleGroup1ClientsOrder { get => this.GetLegacyClientsOrder(0); set => this.SetLegacyClientsOrder(0, value); }
 
-		[JsonProperty("CycleGroup2ClientsOrder")]
-		public Dictionary<string, int> CycleGroup2ClientsOrder { get; set; }
+		[JsonProperty("CycleGroup2ForwardHotkeys", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public List<string> CycleGroup2ForwardHotkeys { get => this.GetLegacyForwardHotkeys(1); set => this.SetLegacyForwardHotkeys(1, value); }
 
-		[JsonProperty("CycleGroup3ForwardHotkeys")]
-		public List<string> CycleGroup3ForwardHotkeys { get; set; }
+		[JsonProperty("CycleGroup2BackwardHotkeys", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public List<string> CycleGroup2BackwardHotkeys { get => this.GetLegacyBackwardHotkeys(1); set => this.SetLegacyBackwardHotkeys(1, value); }
 
-		[JsonProperty("CycleGroup3BackwardHotkeys")]
-		public List<string> CycleGroup3BackwardHotkeys { get; set; }
+		[JsonProperty("CycleGroup2ClientsOrder", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public Dictionary<string, int> CycleGroup2ClientsOrder { get => this.GetLegacyClientsOrder(1); set => this.SetLegacyClientsOrder(1, value); }
 
-		[JsonProperty("CycleGroup3ClientsOrder")]
-		public Dictionary<string, int> CycleGroup3ClientsOrder { get; set; }
+		[JsonProperty("CycleGroup3ForwardHotkeys", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public List<string> CycleGroup3ForwardHotkeys { get => this.GetLegacyForwardHotkeys(2); set => this.SetLegacyForwardHotkeys(2, value); }
 
-		[JsonProperty("CycleGroup4ForwardHotkeys")]
-		public List<string> CycleGroup4ForwardHotkeys { get; set; }
+		[JsonProperty("CycleGroup3BackwardHotkeys", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public List<string> CycleGroup3BackwardHotkeys { get => this.GetLegacyBackwardHotkeys(2); set => this.SetLegacyBackwardHotkeys(2, value); }
 
-		[JsonProperty("CycleGroup4BackwardHotkeys")]
-		public List<string> CycleGroup4BackwardHotkeys { get; set; }
+		[JsonProperty("CycleGroup3ClientsOrder", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public Dictionary<string, int> CycleGroup3ClientsOrder { get => this.GetLegacyClientsOrder(2); set => this.SetLegacyClientsOrder(2, value); }
 
-		[JsonProperty("CycleGroup4ClientsOrder")]
-		public Dictionary<string, int> CycleGroup4ClientsOrder { get; set; }
+		[JsonProperty("CycleGroup4ForwardHotkeys", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public List<string> CycleGroup4ForwardHotkeys { get => this.GetLegacyForwardHotkeys(3); set => this.SetLegacyForwardHotkeys(3, value); }
 
-		[JsonProperty("CycleGroup5ForwardHotkeys")]
-		public List<string> CycleGroup5ForwardHotkeys { get; set; }
+		[JsonProperty("CycleGroup4BackwardHotkeys", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public List<string> CycleGroup4BackwardHotkeys { get => this.GetLegacyBackwardHotkeys(3); set => this.SetLegacyBackwardHotkeys(3, value); }
 
-		[JsonProperty("CycleGroup5BackwardHotkeys")]
-		public List<string> CycleGroup5BackwardHotkeys { get; set; }
+		[JsonProperty("CycleGroup4ClientsOrder", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public Dictionary<string, int> CycleGroup4ClientsOrder { get => this.GetLegacyClientsOrder(3); set => this.SetLegacyClientsOrder(3, value); }
 
-		[JsonProperty("CycleGroup5ClientsOrder")]
-		public Dictionary<string, int> CycleGroup5ClientsOrder { get; set; }
+		[JsonProperty("CycleGroup5ForwardHotkeys", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public List<string> CycleGroup5ForwardHotkeys { get => this.GetLegacyForwardHotkeys(4); set => this.SetLegacyForwardHotkeys(4, value); }
+
+		[JsonProperty("CycleGroup5BackwardHotkeys", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public List<string> CycleGroup5BackwardHotkeys { get => this.GetLegacyBackwardHotkeys(4); set => this.SetLegacyBackwardHotkeys(4, value); }
+
+		[JsonProperty("CycleGroup5ClientsOrder", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+		public Dictionary<string, int> CycleGroup5ClientsOrder { get => this.GetLegacyClientsOrder(4); set => this.SetLegacyClientsOrder(4, value); }
 
 		[JsonProperty("QuickSwitchEnabled")]
 		public bool QuickSwitchEnabled { get; set; }
@@ -480,27 +508,101 @@ namespace EveOPreview.Configuration.Implementation
 			this.DisableThumbnail[currentClient] = isDisabled;
 		}
 
+		private CycleGroupDefinition GetLegacyGroup(int index, bool create)
+		{
+			if (create)
+			{
+				this._cycleGroups ??= new List<CycleGroupDefinition>();
+				while (this._cycleGroups.Count <= index)
+				{
+					int number = this._cycleGroups.Count + 1;
+					this._cycleGroups.Add(new CycleGroupDefinition { Id = $"legacy-{number}", Name = $"Group {number}" });
+				}
+				this._cycleGroups[index] ??= new CycleGroupDefinition { Name = $"Group {index + 1}" };
+			}
+			return this._cycleGroups != null && index < this._cycleGroups.Count ? this._cycleGroups[index] : null;
+		}
+
+		private List<string> GetLegacyForwardHotkeys(int index) => this.GetLegacyGroup(index, false)?.ForwardHotkeys ?? new List<string>();
+		private List<string> GetLegacyBackwardHotkeys(int index) => this.GetLegacyGroup(index, false)?.BackwardHotkeys ?? new List<string>();
+		private Dictionary<string, int> GetLegacyClientsOrder(int index) => this.GetLegacyGroup(index, false)?.ClientsOrder ?? new Dictionary<string, int>();
+
+		private void SetLegacyForwardHotkeys(int index, List<string> value)
+		{
+			if (this._isDeserializingGroups) this._deserializedForwardHotkeys[index] = value;
+			else this.GetLegacyGroup(index, true).ForwardHotkeys = value ?? new List<string>();
+		}
+
+		private void SetLegacyBackwardHotkeys(int index, List<string> value)
+		{
+			if (this._isDeserializingGroups) this._deserializedBackwardHotkeys[index] = value;
+			else this.GetLegacyGroup(index, true).BackwardHotkeys = value ?? new List<string>();
+		}
+
+		private void SetLegacyClientsOrder(int index, Dictionary<string, int> value)
+		{
+			if (this._isDeserializingGroups) this._deserializedClientOrders[index] = value;
+			else this.GetLegacyGroup(index, true).ClientsOrder = value ?? new Dictionary<string, int>();
+		}
+
+		[OnDeserializing]
+		private void BeginDeserializeCycleGroups(StreamingContext context)
+		{
+			this._isDeserializingGroups = true;
+			this._hasDeserializedCycleGroups = false;
+			this._deserializedCycleGroups = null;
+			this._deserializedForwardHotkeys = new Dictionary<int, List<string>>();
+			this._deserializedBackwardHotkeys = new Dictionary<int, List<string>>();
+			this._deserializedClientOrders = new Dictionary<int, Dictionary<string, int>>();
+		}
+
+		[OnDeserialized]
+		private void FinishDeserializeCycleGroups(StreamingContext context)
+		{
+			// Stage legacy properties separately so JSON property order cannot overwrite the canonical collection.
+			this._isDeserializingGroups = false;
+			if (this._hasDeserializedCycleGroups) this._cycleGroups = this._deserializedCycleGroups;
+			else
+			{
+				foreach (var value in this._deserializedForwardHotkeys) this.SetLegacyForwardHotkeys(value.Key, value.Value);
+				foreach (var value in this._deserializedBackwardHotkeys) this.SetLegacyBackwardHotkeys(value.Key, value.Value);
+				foreach (var value in this._deserializedClientOrders) this.SetLegacyClientsOrder(value.Key, value.Value);
+			}
+			this._deserializedCycleGroups = null;
+			this._deserializedForwardHotkeys = null;
+			this._deserializedBackwardHotkeys = null;
+			this._deserializedClientOrders = null;
+			this.EnsureCycleGroups();
+		}
+
+		public void EnsureCycleGroups()
+		{
+			this._cycleGroups ??= new List<CycleGroupDefinition>();
+			if (this._cycleGroups.Count == 0) this._cycleGroups.Add(new CycleGroupDefinition { Name = "Group 1" });
+			var ids = new HashSet<string>(StringComparer.Ordinal);
+			for (int index = 0; index < this._cycleGroups.Count; index++)
+			{
+				CycleGroupDefinition group = this._cycleGroups[index] ??= new CycleGroupDefinition();
+				if (string.IsNullOrWhiteSpace(group.Id) || !ids.Add(group.Id))
+				{
+					do { group.Id = Guid.NewGuid().ToString("N"); } while (!ids.Add(group.Id));
+				}
+				if (string.IsNullOrWhiteSpace(group.Name)) group.Name = $"Group {index + 1}";
+				group.ForwardHotkeys ??= new List<string>();
+				group.BackwardHotkeys ??= new List<string>();
+				group.ClientsOrder ??= new Dictionary<string, int>();
+			}
+			this.CycleGroupAutoAddExclusions = (this.CycleGroupAutoAddExclusions ?? new List<string>())
+				.Where(title => !string.IsNullOrWhiteSpace(title)).Distinct(StringComparer.Ordinal).ToList();
+		}
+
 		/// <summary>
 		/// Applies restrictions to different parameters of the config
 		/// </summary>
 		public void ApplyRestrictions()
 		{
+			this.EnsureCycleGroups();
 			this.ClientHotkey ??= new Dictionary<string, string>();
-			this.CycleGroup1ForwardHotkeys ??= new List<string>();
-			this.CycleGroup1BackwardHotkeys ??= new List<string>();
-			this.CycleGroup2ForwardHotkeys ??= new List<string>();
-			this.CycleGroup2BackwardHotkeys ??= new List<string>();
-			this.CycleGroup3ForwardHotkeys ??= new List<string>();
-			this.CycleGroup3BackwardHotkeys ??= new List<string>();
-			this.CycleGroup4ForwardHotkeys ??= new List<string>();
-			this.CycleGroup4BackwardHotkeys ??= new List<string>();
-			this.CycleGroup5ForwardHotkeys ??= new List<string>();
-			this.CycleGroup5BackwardHotkeys ??= new List<string>();
-			this.CycleGroup1ClientsOrder ??= new Dictionary<string, int>();
-			this.CycleGroup2ClientsOrder ??= new Dictionary<string, int>();
-			this.CycleGroup3ClientsOrder ??= new Dictionary<string, int>();
-			this.CycleGroup4ClientsOrder ??= new Dictionary<string, int>();
-			this.CycleGroup5ClientsOrder ??= new Dictionary<string, int>();
 			this.MinimizeAllClientsHotkeys ??= new List<string>();
 			this.RefreshMinimizedClientsHotkeys ??= new List<string>();
 			// Migrate configurations created by the official build, which persisted
@@ -532,8 +634,12 @@ namespace EveOPreview.Configuration.Implementation
 		}
 		public IList<string> GetAllKnownClients()
 		{
-			// Prefer FlatLayout keys as the source of known clients
-			return this.FlatLayout?.Keys?.ToList() ?? new List<string>();
+			// Group members stay available even while offline or before a preview position is recorded.
+			IEnumerable<string> positionedClients = this.FlatLayout == null ? Enumerable.Empty<string>() : this.FlatLayout.Keys;
+			IEnumerable<string> groupedClients = (this._cycleGroups ?? new List<CycleGroupDefinition>())
+				.Where(group => group?.ClientsOrder != null).SelectMany(group => group.ClientsOrder.Keys);
+			return positionedClients.Concat(groupedClients).Where(title => !string.IsNullOrWhiteSpace(title))
+				.Distinct(StringComparer.Ordinal).ToList();
 		}
 
 		private static int ApplyRestrictions(int value, int minimum, int maximum)

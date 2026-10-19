@@ -370,17 +370,16 @@ namespace EveOPreview.Services
 				});
 			}
 
-			for (int index = 0; index < settings.ForwardHotkeys.Length; index++)
+			foreach (CycleGroupDefinition group in settings.CycleGroups)
 			{
-				int group = index + 1;
-				Dictionary<string, int> order = settings.ClientOrders[index];
-				foreach (string value in settings.ForwardHotkeys[index])
+				Dictionary<string, int> order = group.ClientsOrder;
+				foreach (string value in group.ForwardHotkeys)
 				{
-					Add(value, this.HotkeyText($"循环组 {group} 前进", $"Cycle group {group} forward"), () => this.CycleNextClient(true, order));
+					Add(value, this.HotkeyText($"循环组“{group.Name}”前进", $"Cycle group '{group.Name}' forward"), () => this.CycleNextClient(true, order));
 				}
-				foreach (string value in settings.BackwardHotkeys[index])
+				foreach (string value in group.BackwardHotkeys)
 				{
-					Add(value, this.HotkeyText($"循环组 {group} 后退", $"Cycle group {group} backward"), () => this.CycleNextClient(false, order));
+					Add(value, this.HotkeyText($"循环组“{group.Name}”后退", $"Cycle group '{group.Name}' backward"), () => this.CycleNextClient(false, order));
 				}
 			}
 

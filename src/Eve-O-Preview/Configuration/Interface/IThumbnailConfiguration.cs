@@ -8,6 +8,10 @@ namespace EveOPreview.Configuration
 	{
 
 		string Language { get; set; }
+		List<CycleGroupDefinition> CycleGroups { get; set; }
+		bool AutoAddUngroupedClients { get; set; }
+		List<string> CycleGroupAutoAddExclusions { get; set; }
+		void EnsureCycleGroups();
 		List<string> CycleGroup1ForwardHotkeys { get; set; }
 		List<string> CycleGroup1BackwardHotkeys { get; set; }
 		Dictionary<string, int> CycleGroup1ClientsOrder { get; set; }

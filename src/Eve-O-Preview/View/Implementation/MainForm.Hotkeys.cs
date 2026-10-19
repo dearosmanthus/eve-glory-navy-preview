@@ -19,6 +19,8 @@ namespace EveOPreview.View
 		private string _quickBackwardHotkey = string.Empty;
 		private string _quickHideHotkey = string.Empty;
 		private string _selectedClientHotkey = string.Empty;
+		private int _settingsDialogDepth;
+		private readonly System.Collections.Generic.Stack<Form> _settingsDialogs = new System.Collections.Generic.Stack<Form>();
 
 		public string QuickSwitchForwardHotkey
 		{
@@ -295,17 +297,27 @@ namespace EveOPreview.View
 
 		private void CaptureHotkey(string currentHotkey, Action<string> accepted)
 		{
+			using (var dialog = new HotkeyCaptureDialog(currentHotkey))
+			{
+				if (this.ShowOwnedSettingsDialog(dialog) == DialogResult.OK) accepted(dialog.CapturedHotkey);
+			}
+		}
+
+		private DialogResult ShowOwnedSettingsDialog(Form dialog)
+		{
+			bool firstDialog = this._settingsDialogDepth++ == 0;
+			Form owner = this._settingsDialogs.Count == 0 ? this : this._settingsDialogs.Peek();
+			this._settingsDialogs.Push(dialog);
 			try
 			{
-				this.HotkeyCaptureStateChanged?.Invoke(true);
-				using (var dialog = new HotkeyCaptureDialog(currentHotkey))
-				{
-					if (dialog.ShowDialog(this) == DialogResult.OK) accepted(dialog.CapturedHotkey);
-				}
+				if (firstDialog) this.HotkeyCaptureStateChanged?.Invoke(true);
+				return dialog.ShowDialog(owner);
 			}
 			finally
 			{
-				this.HotkeyCaptureStateChanged?.Invoke(false);
+				this._settingsDialogs.Pop();
+				this._settingsDialogDepth--;
+				if (firstDialog) this.HotkeyCaptureStateChanged?.Invoke(false);
 			}
 		}
 	}

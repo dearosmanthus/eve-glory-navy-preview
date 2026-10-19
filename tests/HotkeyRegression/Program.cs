@@ -29,11 +29,21 @@ internal static partial class Program
         string locale = Path.Combine(AppContext.BaseDirectory, "EVE-O-Preview.locale");
         if (File.Exists(locale)) File.Copy(locale, Path.Combine(scratch, "EVE-O-Preview.locale"), true);
         Environment.CurrentDirectory = scratch;
-        if (args.Contains("--settings-child")) Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+        if (args.Any(arg => arg is "--settings-child" or "--sync-ui-child" or "--presenter-groups-child")) Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         if (args.Contains("--preview")) return Preview();
         if (args.Contains("--settings-child")) return SettingsLifecycleChild(args);
+        if (args.Contains("--sync-ui-child"))
+        {
+            Run("isolated character-copy dialog lifecycle", ClientConfigSyncUiTests);
+            return PrintResult();
+        }
+        if (args.Contains("--presenter-groups-child"))
+        {
+            Run("real dynamic-group presenter integration", PresenterDynamicGroupTests);
+            return PrintResult();
+        }
         if (args.Contains("--settings-only"))
         {
             Run("isolated settings lifecycle", SettingsLifecycleTests);
@@ -45,6 +55,9 @@ internal static partial class Program
         Run("fake client hotkey routing", ClientRoutingTests);
         Run("hotkey message handling", NativeHandlerTests);
         Run("settings UI controls", UiTests);
+        Run("dynamic cycle group compatibility and transactions", DynamicGroupTests);
+        Run("dynamic cycle group UI", DynamicGroupUiTests);
+        Run("isolated character settings synchronization", ClientConfigSyncTests);
         Run("isolated settings lifecycle", SettingsLifecycleTests);
         return PrintResult();
     }
