@@ -5,10 +5,10 @@ namespace EveOPreview.UI.Hotkeys
 {
 	static class HotkeyHandlerNativeMethods
 	{
-		[DllImport("user32.dll")]
+		[DllImport("user32.dll", SetLastError = true)]
 		public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
 
-		[DllImport("user32.dll")]
+		[DllImport("user32.dll", SetLastError = true)]
 		public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
 		public const uint WM_HOTKEY = 0x0312;
@@ -17,7 +17,9 @@ namespace EveOPreview.UI.Hotkeys
 		public const uint MOD_CONTROL = 0x2;
 		public const uint MOD_SHIFT = 0x4;
 		public const uint MOD_WIN = 0x8;
+		public const uint MOD_NOREPEAT = 0x4000;
 
 		public const uint ERROR_HOTKEY_ALREADY_REGISTERED = 1409;
+		public const int ERROR_INVALID_PARAMETER = 87;
 	}
 }

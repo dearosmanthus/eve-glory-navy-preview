@@ -33,6 +33,7 @@ namespace EveOPreview.Configuration
 		string QuickSwitchBackwardHotkey { get; set; }
 		bool QuickHideEnabled { get; set; }
 		string QuickHideHotkey { get; set; }
+		Dictionary<string, string> ClientHotkey { get; set; }
 		bool KeepMinimizedClientsLive { get; set; }
 
 		Dictionary<string, Color> PerClientActiveClientHighlightColor { get; set; }

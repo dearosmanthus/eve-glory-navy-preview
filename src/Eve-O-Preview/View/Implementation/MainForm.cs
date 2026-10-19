@@ -28,7 +28,6 @@ namespace EveOPreview.View
 		private Size _minimumSize;
 		private Size _maximumSize;
 		private string _iconName;
-		private bool _hotkeyCaptureActive = false;
 		private Dictionary<string, string> _configurationFilenames = new Dictionary<string, string>();
 		private CheckBox QuickHideEnabledCheckBox;
 		private CheckBox KeepMinimizedClientsLiveCheckBox;
@@ -708,14 +707,11 @@ namespace EveOPreview.View
 
 		private void HotkeyCaptureTextBox_Enter(object sender, EventArgs e)
 		{
-			this.HotkeyCaptureTextBox.Text = LocalizationExtensions.GetString("MainForm.ContentTabControl.CycleGroupTabPage.HotkeyCaptureButton", "Capture");
 			this.HotkeyCaptureTextBox.SelectAll();
 		}
 
 		private void HotkeyCaptureTextBox_Leave(object sender, EventArgs e)
 		{
-			// clear placeholder if left unchanged
-			if (this.HotkeyCaptureTextBox.Text == LocalizationExtensions.GetString("MainForm.ContentTabControl.CycleGroupTabPage.HotkeyCaptureButton", "Capture")) this.HotkeyCaptureTextBox.Text = string.Empty;
 		}
 
 		private void HotkeysClientUpButton_Click(object sender, EventArgs e)
@@ -750,7 +746,8 @@ namespace EveOPreview.View
 		}
 
 		/// <summary>
-		/// Convert the hotkey string to Keys and attempt to register/unregister to verify its validity; if invalid, display a pop-up message.		/// </summary>
+		/// Validate syntax here; registration and conflict checking belong to the hotkey manager.
+		/// </summary>
 		/// <param name="keyText">For example, "Control+F14"</param>
 		// <returns>Returns true if valid, otherwise false</returns>
 		private bool ValidateAndMaybeWarnHotkey(string keyText)
@@ -770,27 +767,10 @@ namespace EveOPreview.View
 				parsed = Keys.None;
 			}
 
-			// Filtering invalid values ??and modifying only keys
-			if (parsed == Keys.None || parsed == Keys.ControlKey || parsed == Keys.ShiftKey || parsed == Keys.Menu || parsed == Keys.ProcessKey)
+			if (!HotkeyCaptureDialog.IsSupportedKey(parsed))
 			{
 				MessageBox.Show(LocalizationExtensions.GetString("Messages.InvalidHotkey", "Invalid hotkey"), LocalizationExtensions.GetString("Messages.Error", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
 				return false;
-			}
-
-			// Attempt to register and verify usage
-			EveOPreview.UI.Hotkeys.HotkeyHandler tester = null;
-			try
-			{
-				tester = new EveOPreview.UI.Hotkeys.HotkeyHandler(default(IntPtr), parsed);
-				if (!tester.CanRegister())
-				{
-					MessageBox.Show(LocalizationExtensions.GetString("Messages.HotkeyAlreadyInUse", "Hotkey Already in use"), LocalizationExtensions.GetString("Messages.Error", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
-					return false;
-				}
-			}
-			finally
-			{
-				tester?.Dispose();
 			}
 
 			return true;
@@ -1040,12 +1020,6 @@ namespace EveOPreview.View
 			};
 			quickActionsPage.Controls.Add(quickActionsPanel);
 
-			Label quickSwitchHint = this.Controls.Find("QuickSwitchHintLabel", true).OfType<Label>().First();
-			this.QuickSwitchEnabledCheckBox.Location = new Point(18, 24);
-			quickSwitchHint.Location = new Point(40, 59);
-			quickActionsPanel.Controls.Add(this.QuickSwitchEnabledCheckBox);
-			quickActionsPanel.Controls.Add(quickSwitchHint);
-
 			this.QuickHideEnabledCheckBox = new CheckBox
 			{
 				Name = "QuickHideEnabledCheckBox",
@@ -1055,15 +1029,6 @@ namespace EveOPreview.View
 				Checked = true
 			};
 			this.QuickHideEnabledCheckBox.CheckedChanged += OptionChanged_Handler;
-			Label quickHideHint = new Label
-			{
-				Name = "QuickHideHintLabel",
-				Text = "Press once to hide all previews; press again to restore them.",
-				AutoSize = true,
-				ForeColor = SystemColors.GrayText,
-				Location = new Point(40, 143)
-			};
-
 			this.KeepMinimizedClientsLiveCheckBox = new CheckBox
 			{
 				Name = "KeepMinimizedClientsLiveCheckBox",
@@ -1072,23 +1037,12 @@ namespace EveOPreview.View
 				Location = new Point(18, 205)
 			};
 			this.KeepMinimizedClientsLiveCheckBox.CheckedChanged += KeepMinimizedClientsLiveCheckBox_CheckedChanged;
-			Label keepLiveHint = new Label
-			{
-				Name = "KeepMinimizedClientsLiveHintLabel",
-				Text = "Restores minimized clients behind other windows; may increase GPU use.",
-				AutoSize = true,
-				MaximumSize = new Size(500, 0),
-				ForeColor = SystemColors.GrayText,
-				Location = new Point(40, 240)
-			};
-
-			quickActionsPanel.Controls.Add(this.QuickHideEnabledCheckBox);
-			quickActionsPanel.Controls.Add(quickHideHint);
-			quickActionsPanel.Controls.Add(this.KeepMinimizedClientsLiveCheckBox);
-			quickActionsPanel.Controls.Add(keepLiveHint);
+			this.InitializeQuickHotkeyControls(quickActionsPanel);
 			contentTabs.TabPages.Insert(1, quickActionsPage);
 
 			this.InitializePerClientSizeControls();
+			this.InitializeClientHotkeyControls();
+			this.HotkeyCaptureTextBox.ReadOnly = true;
 			this.InitializeProfilesTab(contentTabs);
 
 			this.RenameTab(contentTabs, "GeneralTabPage", "Running");
@@ -1315,6 +1269,7 @@ namespace EveOPreview.View
 		{
 			string title = this.GetSelectedClientTitle();
 			bool enabled = !string.IsNullOrEmpty(title);
+			this.SetClientHotkeyStatus(string.Empty, true);
 			this.PerClientWidthNumericEdit.Enabled = enabled;
 			this.PerClientHeightNumericEdit.Enabled = enabled;
 			foreach (Control control in this.Controls.Find("PerClientSizeApplyButton", true).Concat(this.Controls.Find("PerClientSizeResetButton", true)))
@@ -1326,6 +1281,8 @@ namespace EveOPreview.View
 			{
 				this.SelectedClientChanged?.Invoke(title);
 			}
+			this.SetClientHotkeyControlsEnabled(enabled);
+			if (!enabled) this.SetSelectedClientHotkey(string.Empty);
 		}
 
 		private void PerClientSizeApplyButton_Click(object sender, EventArgs e)
@@ -1473,6 +1430,7 @@ namespace EveOPreview.View
 				}
 			}
 			this.ApplyGloryNavyBrandText();
+			this.RefreshHotkeyDisplayText();
 		}
 
 		private void GeneralSettingsPanel_Paint(object sender, PaintEventArgs e)
@@ -1498,17 +1456,7 @@ namespace EveOPreview.View
 
 		private void HotkeyCaptureButton_Click(object sender, EventArgs e)
 		{
-			this._hotkeyCaptureActive = true;
-			if (this.HotkeyCaptureButton != null)
-			{
-				// if you rename the object - adjust this string
-				this.HotkeyCaptureButton.Text = LocalizationExtensions.GetString("MainForm.ContentTabControl.CycleGroupTabPage.HotkeyCaptureButton_PressKey", "Press key...");
-			}
-			if (this.HotkeyCaptureTextBox != null)
-			{
-				this.HotkeyCaptureTextBox.Text = string.Empty;
-				this.HotkeyCaptureTextBox.Focus();
-			}
+			this.CaptureHotkey(this.HotkeyCaptureTextBox.Text, value => this.HotkeyCaptureTextBox.Text = value);
 		}
 
 		private void HotkeyCaptureTextBox_MouseDown(object sender, MouseEventArgs e)
@@ -1518,38 +1466,7 @@ namespace EveOPreview.View
 
 		private void HotkeyCaptureTextBox_KeyDown(object sender, KeyEventArgs e)
 		{
-			if (!this._hotkeyCaptureActive)
-			{
-				// not currently capturing
-				return;
-			}
-			e.SuppressKeyPress = true;
-			e.Handled = true;
-
-			// Filter only modifier keys and unrecognized ones. ProcessKey
-			var baseKey = e.KeyCode;
-			if (baseKey == Keys.ControlKey || baseKey == Keys.ShiftKey || baseKey == Keys.Menu || baseKey == Keys.ProcessKey)
-			{
-				return;
-			}
-
-			// Uses Microsoft's official KeysConverter to output canonical strings (invariant regions), compatible with Keys Enum.
-			var combined = e.KeyData; // Includes modifier keys
-
-			string keyText = new KeysConverter().ConvertToInvariantString(combined);
-			if (string.IsNullOrWhiteSpace(keyText))
-			{
-				return;
-			}
-			this.HotkeyCaptureTextBox.Text = keyText;
-
-			// Done
-			this._hotkeyCaptureActive = false;
-			if (this.HotkeyCaptureButton != null)
-			{
-				// if you rename the object - adjust this string
-				this.HotkeyCaptureButton.Text = LocalizationExtensions.GetString("MainForm.ContentTabControl.CycleGroupTabPage.HotkeyCaptureButton", "Capture");
-			}
+			// Recording is handled in a modal dialog so Tab and arrow keys can be captured too.
 		}
 
 		public void BeginUpdateUI()

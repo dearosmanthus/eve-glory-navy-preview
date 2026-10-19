@@ -414,7 +414,12 @@ namespace EveOPreview.View
 
 			this._hotkeyHandler = new HotkeyHandler(this.Handle, hotkey);
 			this._hotkeyHandler.Pressed += HotkeyPressed_Handler;
-			this._hotkeyHandler.Register();
+			if (!this._hotkeyHandler.Register())
+			{
+				int error = this._hotkeyHandler.LastRegistrationError;
+				this.UnregisterHotkey();
+				throw new Win32Exception(error, $"Cannot register hotkey {HotkeyGesture.Format(hotkey)} for {this.Title}.");
+			}
 		}
 
 		public void UnregisterHotkey()

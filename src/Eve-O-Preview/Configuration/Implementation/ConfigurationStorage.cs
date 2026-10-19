@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using Newtonsoft.Json;
+using EveOPreview.UI.Hotkeys;
 
 namespace EveOPreview.Configuration.Implementation
 {
@@ -38,8 +39,7 @@ namespace EveOPreview.Configuration.Implementation
 			// These options were introduced by the custom build. Reset them before
 			// populating so switching to an older profile does not inherit values from
 			// the profile that was active immediately before it.
-			this._thumbnailConfiguration.QuickHideEnabled = true;
-			this._thumbnailConfiguration.QuickHideHotkey = "Control+Alt+H";
+			HotkeySettingsSnapshot.Capture(new ThumbnailConfiguration()).Restore(this._thumbnailConfiguration);
 			this._thumbnailConfiguration.KeepMinimizedClientsLive = false;
 
 			// StageHotkeyArraysToAvoidDuplicates(rawData);

@@ -28,6 +28,9 @@ namespace EveOPreview.View
 		bool QuickSwitchEnabled { get; set; }
 		bool QuickHideEnabled { get; set; }
 		bool KeepMinimizedClientsLive { get; set; }
+		string QuickSwitchForwardHotkey { get; set; }
+		string QuickSwitchBackwardHotkey { get; set; }
+		string QuickHideHotkey { get; set; }
 
 		Size ThumbnailSize { get; set; }
 
@@ -65,6 +68,11 @@ namespace EveOPreview.View
 		void SetVersionInfo(string version);
 		void SetThumbnailSizeLimitations(Size minimumSize, Size maximumSize);
 		void SetSelectedClientThumbnailSize(Size size, bool hasCustomSize);
+		void SetSelectedClientHotkey(string hotkey);
+		void SetHotkeyStatus(string text, bool success);
+		void SetQuickHotkeyStatus(string text, bool success);
+		void SetClientHotkeyStatus(string text, bool success);
+		void ShowHotkeyError(string message);
 		void SetupConfigList();
 		void SetProfileStatus(string status);
 		void SelectProfileFilename(string filename);
@@ -88,6 +96,9 @@ namespace EveOPreview.View
 		Action ThumbnailsSizeChanged { get; set; }
 		Action<string> ThumbnailStateChanged { get; set; }
 		Action<string> SelectedClientChanged { get; set; }
+		Action QuickHotkeysApplyRequested { get; set; }
+		Action<string, string> ClientHotkeyApplyRequested { get; set; }
+		Action<bool> HotkeyCaptureStateChanged { get; set; }
 		Action<string, Size> PerClientSizeApplyRequested { get; set; }
 		Action<string> PerClientSizeResetRequested { get; set; }
 		Action ResetAllPerClientSizesRequested { get; set; }

@@ -6,7 +6,7 @@
 
 面向荣耀海军成员定制的 EVE-O Preview Windows 多开窗口预览与快捷切换工具。
 
-当前版本：`8.0.2.28-glory-navy-final`
+当前版本：`8.0.2.29-glory-navy-hotkeys`（快捷键增强版）
 
 ## 下载与使用
 
@@ -19,15 +19,19 @@
 ## 定制功能
 
 - 缩略图最低可调至 `64 × 36`，宽高支持 1 像素步进和尺寸预设。
-- `Ctrl + Alt + ←/→` 快速切换 EVE 客户端。
-- `Ctrl + Alt + H` 快速隐藏或显示全部预览。
+- 在“快捷功能”页直接录制上一个／下一个窗口、隐藏／显示预览的按键，点击“应用快捷键”立即生效。
+- 在“客户端”页为选中的角色设置独立直切按键，支持清除。
+- 默认仍使用 `Ctrl + Alt + ←/→` 切屏、`Ctrl + Alt + H` 隐藏／显示预览；每项可恢复默认。
+- 按键重复或被其他软件占用时显示具体原因，失败恢复原快捷键；长按不会连续乱切。
 - 支持为单个客户端设置独立缩略图尺寸。
 - 支持命名保存、加载和覆盖多套布局。
 - 窗口吸附与更灵活的预览位置调整。
 - 实验性后台恢复机制：尽量维持已最小化客户端的 DWM 预览刷新，但效果仍取决于 Windows、显卡驱动和游戏渲染状态。
 - 重新分类的中文设置界面与荣耀海军品牌图标。
 
-完整的中文使用说明见 [README-cn.md](README-cn.md)，本版变更摘要见 [GLORY-NAVY-FINAL-CHANGES-zh-CN.txt](GLORY-NAVY-FINAL-CHANGES-zh-CN.txt)。
+完整的中文使用说明见 [README-cn.md](README-cn.md)，新版操作步骤见 [快捷键增强版说明](HOTKEYS-8.0.2.29-zh-CN.md)。
+
+升级时先退出旧版，将原 `EVE-O-Preview.json` 复制到新版所在文件夹即可。新版压缩包不包含个人配置，不会覆盖原来的布局。
 
 ## 安全与合规说明
 
@@ -60,5 +64,5 @@ dotnet publish src\Eve-O-Preview\Eve-O-Preview.csproj `
 正式发布包会同时提供 `.sha256.txt` 文件。可在 PowerShell 中校验：
 
 ```powershell
-Get-FileHash .\EVE-O-Preview-Glory-Navy-Final-win-x64.zip -Algorithm SHA256
+Get-FileHash .\EVE-O-Preview-Glory-Navy-8.0.2.29-win-x64.zip -Algorithm SHA256
 ```

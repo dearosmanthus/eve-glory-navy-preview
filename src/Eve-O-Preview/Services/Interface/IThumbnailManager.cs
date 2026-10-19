@@ -14,6 +14,8 @@ namespace EveOPreview.Services
 		void UpdateClientLayouts();
 
 		void ReloadCycleClientHotkeys();
+		bool TryApplyHotkeys(out string error);
+		void SetHotkeyCaptureActive(bool active);
 
 		IThumbnailView GetClientByTitle(string title);
 		IThumbnailView GetClientByPointer(System.IntPtr ptr);

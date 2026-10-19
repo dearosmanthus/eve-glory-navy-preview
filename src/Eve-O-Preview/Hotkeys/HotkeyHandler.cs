@@ -1,6 +1,7 @@
 using System;
 using System.Windows.Forms;
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 
 namespace EveOPreview.UI.Hotkeys
 {
@@ -43,6 +44,8 @@ namespace EveOPreview.UI.Hotkeys
 
 		public Keys KeyCode { get; private set; }
 
+		public int LastRegistrationError { get; private set; }
+
 		public event HandledEventHandler Pressed;
 
 		public bool CanRegister()
@@ -60,14 +63,16 @@ namespace EveOPreview.UI.Hotkeys
 
 		public bool Register()
 		{
+			this.LastRegistrationError = 0;
 			// Check that we have not registered
 			if (this.IsRegistered)
 			{
 				return false;
 			}
 
-			if (this.KeyCode == Keys.None)
+			if (this.KeyCode == Keys.None || !HotkeyGesture.IsValid(this.KeyCode))
 			{
+				this.LastRegistrationError = HotkeyHandlerNativeMethods.ERROR_INVALID_PARAMETER;
 				return false;
 			}
 
@@ -75,13 +80,15 @@ namespace EveOPreview.UI.Hotkeys
 			uint key = (uint)this.KeyCode & (~(uint)Keys.Alt) & (~(uint)Keys.Control) & (~(uint)Keys.Shift);
 
 			// Get unmanaged version of the modifiers code
-			uint modifiers = (this.KeyCode.HasFlag(Keys.Alt) ? HotkeyHandlerNativeMethods.MOD_ALT : 0)
+			uint modifiers = HotkeyHandlerNativeMethods.MOD_NOREPEAT
+							 | (this.KeyCode.HasFlag(Keys.Alt) ? HotkeyHandlerNativeMethods.MOD_ALT : 0)
 							 | (this.KeyCode.HasFlag(Keys.Control) ? HotkeyHandlerNativeMethods.MOD_CONTROL : 0)
 							 | (this.KeyCode.HasFlag(Keys.Shift) ? HotkeyHandlerNativeMethods.MOD_SHIFT : 0);
 
 			// Register the hotkey
 			if (!HotkeyHandlerNativeMethods.RegisterHotKey(this._hotkeyTarget, this._hotkeyId, modifiers, key))
 			{
+				this.LastRegistrationError = Marshal.GetLastWin32Error();
 				return false;
 			}
 

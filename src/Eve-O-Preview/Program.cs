@@ -19,6 +19,7 @@ namespace EveOPreview
 		[STAThread]
 		static void Main()
 		{
+			System.IO.Directory.SetCurrentDirectory(AppContext.BaseDirectory);
 			// The very usual Mutex-based single-instance screening
 			// 'token' variable is used to store reference to the instance Mutex
 			// during the app lifetime

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using EveOPreview.Configuration;
 using EveOPreview.Configuration.Implementation;
 using EveOPreview.Mediator.Messages;
+using EveOPreview.Services;
 using EveOPreview.View;
 using MediatR;
 
@@ -29,6 +30,9 @@ namespace EveOPreview.Presenters
 		private bool _exitApplication;
 		private bool _isLoadingUi;
 		private int _currentGroup = 1;
+		private IThumbnailManager _hotkeyManager;
+		private string _selectedClientTitle;
+		private IThumbnailManager HotkeyManager => this._hotkeyManager ??= this.Controller.Create<IThumbnailManager>();
 		#endregion
 
 		public MainFormPresenter(IApplicationController controller, IMainFormView view, IMediator mediator, IThumbnailConfiguration configuration, IConfigurationStorage configurationStorage)
@@ -58,6 +62,9 @@ namespace EveOPreview.Presenters
 			this.View.PerClientSizeResetRequested = this.ResetPerClientSize;
 			this.View.ResetAllPerClientSizesRequested = this.ResetAllPerClientSizes;
 			this.View.SaveProfileRequested = this.SaveProfile;
+			this.View.QuickHotkeysApplyRequested = this.ApplyQuickHotkeys;
+			this.View.ClientHotkeyApplyRequested = this.ApplyClientHotkey;
+			this.View.HotkeyCaptureStateChanged = active => this.HotkeyManager.SetHotkeyCaptureActive(active);
 			this.View.IconName = this._configuration.IconName;
 		}
 
@@ -116,10 +123,7 @@ namespace EveOPreview.Presenters
 			this._configurationStorage.Load();
 			this._isLoadingUi = true;
 
-			if (!string.IsNullOrEmpty(this._configuration.Language) && this._configuration.Language != "en-US")
-			{
-				LocalizationExtensions.SetLanguage(this._configuration.Language);
-			}
+			LocalizationExtensions.SetLanguage(string.IsNullOrWhiteSpace(this._configuration.Language) ? "zh-CN" : this._configuration.Language);
 			this.View.InitializeLanguageControls();
 
 			this.View.Language = this._configuration.Language;	
@@ -139,6 +143,7 @@ namespace EveOPreview.Presenters
 			this.View.EnablePerClientThumbnailLayouts = this._configuration.EnablePerClientThumbnailLayouts;
 			this.View.QuickSwitchEnabled = this._configuration.QuickSwitchEnabled;
 			this.View.QuickHideEnabled = this._configuration.QuickHideEnabled;
+			this.LoadQuickHotkeysToView();
 			this.View.KeepMinimizedClientsLive = this._configuration.KeepMinimizedClientsLive;
 
 			this.View.SetThumbnailSizeLimitations(this._configuration.ThumbnailMinimumSize, this._configuration.ThumbnailMaximumSize);
@@ -183,11 +188,13 @@ namespace EveOPreview.Presenters
 			if (this._isLoadingUi) return;
 			// Save current group's UI to config, then load new group's config into UI
 			this.SaveGroupFromView(this._currentGroup);
+			bool applied = this.HotkeyManager.TryApplyHotkeys(out string hotkeyError);
 			this._currentGroup = this.View.SelectedCycleGroup;
 			this.View.BeginUpdateUI();
 			this.LoadGroupToView(this._currentGroup);
 			this.View.EndUpdateUI();
-			this._configurationStorage.Save();
+			if (applied) this._configurationStorage.Save();
+			else this.ReportHotkeyFailure(hotkeyError);
 		}
 
 		private void LoadGroupToView(int group)
@@ -378,11 +385,76 @@ namespace EveOPreview.Presenters
 			this._configuration.IconName = this.View.IconName;
 
 			this.SaveGroupFromView(this._currentGroup);
+			if (!this.HotkeyManager.TryApplyHotkeys(out string hotkeyError))
+			{
+				this.View.BeginUpdateUI();
+				try
+				{
+					this.View.QuickSwitchEnabled = this._configuration.QuickSwitchEnabled;
+					this.View.QuickHideEnabled = this._configuration.QuickHideEnabled;
+					this.LoadGroupToView(this._currentGroup);
+				}
+				finally { this.View.EndUpdateUI(); }
+				this.ReportHotkeyFailure(hotkeyError);
+			}
 			this._configurationStorage.Save();
 			this.View.RefreshZoomSettings();
 			await this._mediator.Publish(new ThumbnailUpdateClientsLayouts());
 			await this._mediator.Send(new SaveConfiguration());
-			await this._mediator.Publish(new HotkeysConfigurationUpdated());
+		}
+
+		private void LoadQuickHotkeysToView()
+		{
+			this.View.QuickSwitchForwardHotkey = this._configuration.QuickSwitchForwardHotkey ?? string.Empty;
+			this.View.QuickSwitchBackwardHotkey = this._configuration.QuickSwitchBackwardHotkey ?? string.Empty;
+			this.View.QuickHideHotkey = this._configuration.QuickHideHotkey ?? string.Empty;
+		}
+
+		private void ApplyQuickHotkeys()
+		{
+			this._configuration.QuickSwitchForwardHotkey = (this.View.QuickSwitchForwardHotkey ?? string.Empty).Trim();
+			this._configuration.QuickSwitchBackwardHotkey = (this.View.QuickSwitchBackwardHotkey ?? string.Empty).Trim();
+			this._configuration.QuickHideHotkey = (this.View.QuickHideHotkey ?? string.Empty).Trim();
+			this.CommitHotkeyChanges(this.View.SetQuickHotkeyStatus);
+			this.LoadQuickHotkeysToView();
+		}
+
+		private void ApplyClientHotkey(string title, string hotkey)
+		{
+			if (string.IsNullOrWhiteSpace(title)) return;
+			this._configuration.ClientHotkey ??= new Dictionary<string, string>();
+			if (string.IsNullOrWhiteSpace(hotkey)) this._configuration.ClientHotkey.Remove(title);
+			else this._configuration.ClientHotkey[title] = hotkey.Trim();
+			this.CommitHotkeyChanges(this.View.SetClientHotkeyStatus);
+			this.LoadClientHotkeyToView(title);
+		}
+
+		private bool CommitHotkeyChanges(Action<string, bool> setStatus = null)
+		{
+			if (!this.HotkeyManager.TryApplyHotkeys(out string error))
+			{
+				this.ReportHotkeyFailure(error);
+				return false;
+			}
+			this._configurationStorage.Save();
+			string message = LocalizationExtensions.GetString("Messages.HotkeysApplied", "Hotkeys saved and applied.");
+			if (setStatus == null) this.View.SetHotkeyStatus(message, true);
+			else setStatus(message, true);
+			return true;
+		}
+
+		private void ReportHotkeyFailure(string error)
+		{
+			this.View.SetHotkeyStatus(error, false);
+			this.View.ShowHotkeyError(error);
+		}
+
+		private void LoadClientHotkeyToView(string title)
+		{
+			string hotkey = string.Empty;
+			if (title != null && this._configuration.ClientHotkey != null)
+				this._configuration.ClientHotkey.TryGetValue(title, out hotkey);
+			this.View.SetSelectedClientHotkey(hotkey ?? string.Empty);
 		}
 
 
@@ -450,6 +522,8 @@ namespace EveOPreview.Presenters
 
 		private void LoadSelectedClientSize(string title)
 		{
+			this._selectedClientTitle = title;
+			this.LoadClientHotkeyToView(title);
 			if (string.IsNullOrEmpty(title))
 			{
 				return;
@@ -583,7 +657,17 @@ namespace EveOPreview.Presenters
 			await this._mediator.Publish(new ThumbnailApplyAllClientsLayouts());
 			await this._mediator.Publish(new ThumbnailCycleGroupIndicatorUpdated());
 			this.View.RefreshZoomSettings();
-			await this._mediator.Publish(new HotkeysConfigurationUpdated());
+			this.CommitHotkeyChanges();
+			this.LoadQuickHotkeysToView();
+			this.LoadClientHotkeyToView(this._selectedClientTitle);
+			this.View.BeginUpdateUI();
+			try
+			{
+				this.View.QuickSwitchEnabled = this._configuration.QuickSwitchEnabled;
+				this.View.QuickHideEnabled = this._configuration.QuickHideEnabled;
+				this.LoadGroupToView(this._currentGroup);
+			}
+			finally { this.View.EndUpdateUI(); }
 		}
 
 		public void SaveSettings()

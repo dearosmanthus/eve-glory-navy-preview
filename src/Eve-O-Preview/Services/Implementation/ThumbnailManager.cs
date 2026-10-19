@@ -52,6 +52,11 @@ namespace EveOPreview.Services
 		private int _hideThumbnailsDelay;
 
 		private List<HotkeyHandler> _cycleClientHotkeyHandlers = new List<HotkeyHandler>();
+		private List<HotkeyBinding> _activeHotkeyBindings = new List<HotkeyBinding>();
+		private HotkeySettingsSnapshot _appliedHotkeySettings;
+		private bool _hotkeyCaptureActive;
+		private string _initialHotkeyWarning;
+		private readonly HashSet<Keys> _unavailableClientHotkeys = new HashSet<Keys>();
 		#endregion
 
 		public ThumbnailManager(IMediator mediator, IThumbnailConfiguration configuration, IProcessMonitor processMonitor, IWindowManager windowManager, IThumbnailViewFactory factory)
@@ -81,25 +86,7 @@ namespace EveOPreview.Services
 
 			this._hideThumbnailsDelay = this._configuration.HideThumbnailsDelay;
 
-			RegisterCycleClientHotkey(this._configuration.CycleGroup1ForwardHotkeys?.Select(x => this._configuration.StringToKey(x)), true, this._configuration.CycleGroup1ClientsOrder);
-			RegisterCycleClientHotkey(this._configuration.CycleGroup1BackwardHotkeys?.Select(x => this._configuration.StringToKey(x)), false, this._configuration.CycleGroup1ClientsOrder);
-
-			RegisterCycleClientHotkey(this._configuration.CycleGroup2ForwardHotkeys?.Select(x => this._configuration.StringToKey(x)), true, this._configuration.CycleGroup2ClientsOrder);
-			RegisterCycleClientHotkey(this._configuration.CycleGroup2BackwardHotkeys?.Select(x => this._configuration.StringToKey(x)), false, this._configuration.CycleGroup2ClientsOrder);
-
-			RegisterCycleClientHotkey(this._configuration.CycleGroup3ForwardHotkeys?.Select(x => this._configuration.StringToKey(x)), true, this._configuration.CycleGroup3ClientsOrder);
-			RegisterCycleClientHotkey(this._configuration.CycleGroup3BackwardHotkeys?.Select(x => this._configuration.StringToKey(x)), false, this._configuration.CycleGroup3ClientsOrder);
-
-			RegisterCycleClientHotkey(this._configuration.CycleGroup4ForwardHotkeys?.Select(x => this._configuration.StringToKey(x)), true, this._configuration.CycleGroup4ClientsOrder);
-			RegisterCycleClientHotkey(this._configuration.CycleGroup4BackwardHotkeys?.Select(x => this._configuration.StringToKey(x)), false, this._configuration.CycleGroup4ClientsOrder);
-
-			RegisterCycleClientHotkey(this._configuration.CycleGroup5ForwardHotkeys?.Select(x => this._configuration.StringToKey(x)), true, this._configuration.CycleGroup5ClientsOrder);
-			RegisterCycleClientHotkey(this._configuration.CycleGroup5BackwardHotkeys?.Select(x => this._configuration.StringToKey(x)), false, this._configuration.CycleGroup5ClientsOrder);
-			RegisterQuickSwitchHotkeys();
-			RegisterQuickHideHotkey();
-
-			RegisterMinimizeAllClientsHotkey(this._configuration.MinimizeAllClientsHotkeys?.Select(x => this._configuration.StringToKey(x)));
-			RegisterRefreshMinimizedClientsHotkey(this._configuration.RefreshMinimizedClientsHotkeys?.Select(x => this._configuration.StringToKey(x)));
+			this.InitializeHotkeys();
 		}
 
 		public IThumbnailView GetClientByTitle(string title)
@@ -222,7 +209,7 @@ namespace EveOPreview.Services
 		public void CycleNextClient(bool isForwards, Dictionary<string, int> cycleOrder)
 		{
 			IOrderedEnumerable<KeyValuePair<string, int>> clientOrder;
-			Dictionary<string, int> _cycleOrder = new Dictionary<string, int>(cycleOrder);
+			Dictionary<string, int> _cycleOrder = cycleOrder == null ? new Dictionary<string, int>() : new Dictionary<string, int>(cycleOrder);
 
 			if ( _cycleOrder.Count == 0 ) 
 			{
@@ -322,108 +309,260 @@ namespace EveOPreview.Services
 			return;
 		}
 
-		public void RegisterCycleClientHotkey(IEnumerable<Keys> keys, bool isForwards, Dictionary<string, int> cycleOrder)
+		private sealed class HotkeyBinding
 		{
-			foreach (var hotkey in keys)
+			public Keys Key { get; }
+			public string Description { get; }
+			public Action Execute { get; }
+			public string ClientTitle { get; }
+
+			public HotkeyBinding(Keys key, string description, Action execute, string clientTitle)
 			{
-				if (hotkey == Keys.None)
+				this.Key = key;
+				this.Description = description;
+				this.Execute = execute;
+				this.ClientTitle = clientTitle;
+			}
+		}
+
+		private string HotkeyText(string chinese, string english)
+		{
+			return this._configuration.Language?.StartsWith("zh", StringComparison.OrdinalIgnoreCase) == true ? chinese : english;
+		}
+
+		private List<HotkeyBinding> BuildHotkeyBindings(HotkeySettingsSnapshot settings, out string error)
+		{
+			var bindings = new List<HotkeyBinding>();
+			var errors = new List<string>();
+			var assigned = new Dictionary<Keys, string>();
+
+			void Add(string value, string description, Action action, string clientTitle = null)
+			{
+				if (!HotkeyGesture.TryParse(value, out Keys key))
+				{
+					errors.Add(this.HotkeyText($"{description}：无效按键“{value}”。", $"{description}: invalid hotkey '{value}'."));
+					return;
+				}
+				if (key == Keys.None)
 				{
 					return;
 				}
-
-				var newHandler = new HotkeyHandler(default(IntPtr), hotkey);
-				newHandler.Pressed += (object s, HandledEventArgs e) =>
+				if (assigned.TryGetValue(key, out string previous))
 				{
-					this.CycleNextClient(isForwards, cycleOrder);
-					e.Handled = true;
-				};
-
-				newHandler.Register();
-				this._cycleClientHotkeyHandlers.Add(newHandler);
+					errors.Add(this.HotkeyText($"{HotkeyGesture.Format(key)} 同时分配给“{previous}”和“{description}”。", $"{HotkeyGesture.Format(key)} is assigned to both '{previous}' and '{description}'."));
+					return;
+				}
+				assigned.Add(key, description);
+				bindings.Add(new HotkeyBinding(key, description, action, clientTitle));
 			}
-		}
 
-		private void RegisterQuickSwitchHotkeys()
-		{
-			if (!this._configuration.QuickSwitchEnabled)
+			if (settings.QuickSwitchEnabled)
 			{
-				return;
+				Add(settings.QuickSwitchForwardHotkey, this.HotkeyText("下一个窗口", "Next window"), () => this.CycleNextClient(true, new Dictionary<string, int>()));
+				Add(settings.QuickSwitchBackwardHotkey, this.HotkeyText("上一个窗口", "Previous window"), () => this.CycleNextClient(false, new Dictionary<string, int>()));
+			}
+			if (settings.QuickHideEnabled)
+			{
+				Add(settings.QuickHideHotkey, this.HotkeyText("隐藏／显示预览", "Hide/show previews"), () =>
+				{
+					this._quickHideActive = !this._quickHideActive;
+					this.RefreshThumbnails();
+				});
 			}
 
-			var allClients = new Dictionary<string, int>();
-			RegisterCycleClientHotkey(
-				new[] { this._configuration.StringToKey(this._configuration.QuickSwitchForwardHotkey) },
-				true,
-				allClients);
-			RegisterCycleClientHotkey(
-				new[] { this._configuration.StringToKey(this._configuration.QuickSwitchBackwardHotkey) },
-				false,
-				allClients);
+			for (int index = 0; index < settings.ForwardHotkeys.Length; index++)
+			{
+				int group = index + 1;
+				Dictionary<string, int> order = settings.ClientOrders[index];
+				foreach (string value in settings.ForwardHotkeys[index])
+				{
+					Add(value, this.HotkeyText($"循环组 {group} 前进", $"Cycle group {group} forward"), () => this.CycleNextClient(true, order));
+				}
+				foreach (string value in settings.BackwardHotkeys[index])
+				{
+					Add(value, this.HotkeyText($"循环组 {group} 后退", $"Cycle group {group} backward"), () => this.CycleNextClient(false, order));
+				}
+			}
+
+			foreach (string value in settings.MinimizeAllClientsHotkeys)
+			{
+				Add(value, this.HotkeyText("最小化所有客户端", "Minimize all clients"), this.MinimizeAllClients);
+			}
+			foreach (string value in settings.RefreshMinimizedClientsHotkeys)
+			{
+				Add(value, this.HotkeyText("刷新最小化客户端", "Refresh minimized clients"), this.RefreshMinimizedClients);
+			}
+			foreach (var entry in settings.ClientHotkeys.OrderBy(x => x.Key, StringComparer.Ordinal))
+			{
+				string title = entry.Key;
+				Add(entry.Value, this.HotkeyText($"切到角色 {title}", $"Switch to {title}"), () => this.ActivateClientByTitle(title), title);
+			}
+
+			error = string.Join(Environment.NewLine, errors);
+			return bindings;
 		}
 
-		private void RegisterQuickHideHotkey()
+		private void ActivateClientByTitle(string title)
 		{
-			if (!this._configuration.QuickHideEnabled)
+			var client = this._thumbnailViews.OrderBy(x => x.Key.ToInt64()).FirstOrDefault(x => x.Value.Title == title);
+			if (client.Value != null)
+			{
+				this.SetActive(client);
+			}
+		}
+
+		private void ReleaseRegisteredHotkeys()
+		{
+			foreach (HotkeyHandler handler in this._cycleClientHotkeyHandlers)
+			{
+				handler.Dispose();
+			}
+			this._cycleClientHotkeyHandlers.Clear();
+			this._unavailableClientHotkeys.Clear();
+
+			// Individual bindings now belong to this manager and are never registered by views.
+			foreach (IThumbnailView view in this._thumbnailViews.Values)
+			{
+				view.UnregisterHotkey();
+			}
+		}
+
+		private bool RegisterHotkeyBindings(IEnumerable<HotkeyBinding> bindings, bool allowPartial, out List<HotkeyBinding> registered, out string error)
+		{
+			registered = new List<HotkeyBinding>();
+			var errors = new List<string>();
+			foreach (HotkeyBinding binding in bindings)
+			{
+				bool offline = binding.ClientTitle != null && !this._thumbnailViews.Values.Any(x => x.Title == binding.ClientTitle);
+				if (offline)
+				{
+					registered.Add(binding);
+					continue;
+				}
+				var handler = new HotkeyHandler(IntPtr.Zero, binding.Key);
+				handler.Pressed += (object sender, HandledEventArgs args) =>
+				{
+					binding.Execute();
+					args.Handled = true;
+				};
+				if (!handler.Register())
+				{
+					int code = handler.LastRegistrationError;
+					errors.Add(this.HotkeyText(
+						$"{binding.Description}（{HotkeyGesture.Format(binding.Key)}）无法注册，可能被其他程序或系统占用。错误码：{code}。",
+						$"Cannot register {binding.Description} ({HotkeyGesture.Format(binding.Key)}); another application or Windows may be using it. Error: {code}."));
+					handler.Dispose();
+					if (!allowPartial)
+					{
+						this.ReleaseRegisteredHotkeys();
+						registered.Clear();
+						break;
+					}
+					continue;
+				}
+				this._cycleClientHotkeyHandlers.Add(handler);
+				registered.Add(binding);
+			}
+			error = string.Join(Environment.NewLine, errors);
+			return errors.Count == 0;
+		}
+
+		private void InitializeHotkeys()
+		{
+			this._appliedHotkeySettings = HotkeySettingsSnapshot.Capture(this._configuration);
+			List<HotkeyBinding> bindings = this.BuildHotkeyBindings(this._appliedHotkeySettings, out string validationError);
+			this.RegisterHotkeyBindings(bindings, true, out this._activeHotkeyBindings, out string registrationError);
+			this._initialHotkeyWarning = string.Join(Environment.NewLine, new[] { validationError, registrationError }.Where(x => !string.IsNullOrEmpty(x)));
+		}
+
+		public bool TryApplyHotkeys(out string error)
+		{
+			if (this._hotkeyCaptureActive)
+			{
+				this._appliedHotkeySettings?.Restore(this._configuration);
+				error = this.HotkeyText("请结束按键录制后再应用设置。", "Finish recording the hotkey before applying settings.");
+				return false;
+			}
+
+			HotkeySettingsSnapshot requested = HotkeySettingsSnapshot.Capture(this._configuration);
+			List<HotkeyBinding> bindings = this.BuildHotkeyBindings(requested, out error);
+			if (!string.IsNullOrEmpty(error))
+			{
+				this._appliedHotkeySettings?.Restore(this._configuration);
+				return false;
+			}
+
+			// Release every old binding first so keys can be exchanged between actions in one save.
+			this.ReleaseRegisteredHotkeys();
+			if (!this.RegisterHotkeyBindings(bindings, false, out List<HotkeyBinding> registered, out error))
+			{
+				this._appliedHotkeySettings?.Restore(this._configuration);
+				this.RegisterHotkeyBindings(this._activeHotkeyBindings, true, out _, out string rollbackError);
+				if (!string.IsNullOrEmpty(rollbackError))
+				{
+					error += Environment.NewLine + this.HotkeyText("恢复原快捷键时也发生占用：", "Some previous hotkeys could not be restored:") + Environment.NewLine + rollbackError;
+				}
+				return false;
+			}
+
+			this._activeHotkeyBindings = registered;
+			this._appliedHotkeySettings = requested;
+			if (!requested.QuickHideEnabled && this._quickHideActive)
 			{
 				this._quickHideActive = false;
-				return;
-			}
-
-			Keys hotkey = this._configuration.StringToKey(this._configuration.QuickHideHotkey);
-			if (hotkey == Keys.None)
-			{
-				return;
-			}
-
-			var handler = new HotkeyHandler(default(IntPtr), hotkey);
-			handler.Pressed += (object sender, HandledEventArgs e) =>
-			{
-				this._quickHideActive = !this._quickHideActive;
 				this.RefreshThumbnails();
-				e.Handled = true;
-			};
-			handler.Register();
-			this._cycleClientHotkeyHandlers.Add(handler);
+			}
+			return true;
 		}
 
-		public void RegisterMinimizeAllClientsHotkey(IEnumerable<Keys> keys)
+		public void SetHotkeyCaptureActive(bool active)
 		{
-			foreach (var hotkey in keys)
+			if (this._hotkeyCaptureActive == active)
 			{
-				if (hotkey == Keys.None)
-				{
-					return;
-				}
-
-				var newHandler = new HotkeyHandler(default(IntPtr), hotkey);
-				newHandler.Pressed += (object s, HandledEventArgs e) =>
-				{
-					this.MinimizeAllClients();
-					e.Handled = true;
-				};
-
-				newHandler.Register();
-				this._cycleClientHotkeyHandlers.Add(newHandler);
+				return;
+			}
+			this._hotkeyCaptureActive = active;
+			if (active)
+			{
+				this.ReleaseRegisteredHotkeys();
+			}
+			else if (!this.RegisterHotkeyBindings(this._activeHotkeyBindings, true, out _, out string error))
+			{
+				this.ShowHotkeyWarning(error);
 			}
 		}
-		public void RegisterRefreshMinimizedClientsHotkey(IEnumerable<Keys> keys)
+
+		private void ShowHotkeyWarning(string error)
 		{
-			foreach (var hotkey in keys)
+			MessageBox.Show(error, this.HotkeyText("快捷键设置", "Hotkey settings"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+		}
+
+		private void SynchronizeClientHotkeys()
+		{
+			if (this._hotkeyCaptureActive)
 			{
-				if (hotkey == Keys.None)
+				return;
+			}
+
+			foreach (HotkeyBinding binding in this._activeHotkeyBindings.Where(x => x.ClientTitle != null))
+			{
+				bool online = this._thumbnailViews.Values.Any(x => x.Title == binding.ClientTitle);
+				HotkeyHandler handler = this._cycleClientHotkeyHandlers.FirstOrDefault(x => x.KeyCode == binding.Key);
+				if (!online)
 				{
-					return;
+					if (handler != null)
+					{
+						handler.Dispose();
+						this._cycleClientHotkeyHandlers.Remove(handler);
+					}
+					this._unavailableClientHotkeys.Remove(binding.Key);
 				}
-
-				var newHandler = new HotkeyHandler(default(IntPtr), hotkey);
-				newHandler.Pressed += (object s, HandledEventArgs e) =>
+				else if (handler == null && !this._unavailableClientHotkeys.Contains(binding.Key)
+					&& !this.RegisterHotkeyBindings(new[] { binding }, true, out _, out string error))
 				{
-					this.RefreshMinimizedClients();
-					e.Handled = true;
-				};
-
-				newHandler.Register();
-				this._cycleClientHotkeyHandlers.Add(newHandler);
+					this._unavailableClientHotkeys.Add(binding.Key);
+					this.ShowHotkeyWarning(error);
+				}
 			}
 		}
 
@@ -432,6 +571,12 @@ namespace EveOPreview.Services
 			this._thumbnailUpdateTimer.Start();
 
 			this.RefreshThumbnails();
+			if (!string.IsNullOrEmpty(this._initialHotkeyWarning))
+			{
+				string warning = this._initialHotkeyWarning;
+				this._initialHotkeyWarning = null;
+				this.ShowHotkeyWarning(this.HotkeyText("以下快捷键暂未生效，其余快捷键可正常使用。请在快捷键设置中修改：", "The following hotkeys are unavailable; other hotkeys remain active. Update them in hotkey settings:") + Environment.NewLine + warning);
+			}
 		}
 
 		public void Stop()
@@ -465,6 +610,7 @@ namespace EveOPreview.Services
 		private async void UpdateThumbnailsList()
 		{
 			this._processMonitor.GetUpdatedProcesses(out ICollection<IProcessInfo> addedProcesses, out ICollection<IProcessInfo> updatedProcesses, out ICollection<IProcessInfo> removedProcesses);
+			bool clientHotkeysChanged = addedProcesses.Count > 0 || removedProcesses.Count > 0;
 
 			List<string> viewsAdded = new List<string>();
 			List<string> viewsRemoved = new List<string>();
@@ -501,8 +647,6 @@ namespace EveOPreview.Services
 
 				view.ThumbnailToggleCycleGroup = this.ThumbnailToggleCycleGroup;
 
-				view.RegisterHotkey(this._configuration.GetClientHotkey(view.Title));
-
 				this.ApplyClientLayout(view);
 				this.ApplyCaptionBar(view, false);
 
@@ -525,11 +669,10 @@ namespace EveOPreview.Services
 
 				if (process.Title != view.Title) // update thumbnail title
 				{
+					clientHotkeysChanged = true;
 					viewsRemoved.Add(view.Title);
 					view.Title = process.Title;
 					viewsAdded.Add(view.Title);
-
-					view.RegisterHotkey(this._configuration.GetClientHotkey(process.Title));
 
 					this.ApplyClientLayout(view);
 					this.ApplyCaptionBar(view, false);
@@ -556,6 +699,11 @@ namespace EveOPreview.Services
 				view.ThumbnailToggleCycleGroup = null;
 
 				view.Close();
+			}
+
+			if (clientHotkeysChanged)
+			{
+				this.SynchronizeClientHotkeys();
 			}
 
 			if ((viewsAdded.Count > 0) || (viewsRemoved.Count > 0))
@@ -1277,48 +1425,9 @@ namespace EveOPreview.Services
 
 		public void ReloadCycleClientHotkeys()
 		{
-			// Unregister and dispose previous handlers
-			foreach (var handler in this._cycleClientHotkeyHandlers)
+			if (!this.TryApplyHotkeys(out string error))
 			{
-				try
-				{
-					handler.Unregister();
-					handler.Dispose();
-				}
-				catch { /* ignore */ }
-			}
-			this._cycleClientHotkeyHandlers.Clear();
-
-			// Re-register based on current configuration
-			RegisterCycleClientHotkey(this._configuration.CycleGroup1ForwardHotkeys?.Select(x => this._configuration.StringToKey(x)), true, this._configuration.CycleGroup1ClientsOrder);
-			RegisterCycleClientHotkey(this._configuration.CycleGroup1BackwardHotkeys?.Select(x => this._configuration.StringToKey(x)), false, this._configuration.CycleGroup1ClientsOrder);
-
-			RegisterCycleClientHotkey(this._configuration.CycleGroup2ForwardHotkeys?.Select(x => this._configuration.StringToKey(x)), true, this._configuration.CycleGroup2ClientsOrder);
-			RegisterCycleClientHotkey(this._configuration.CycleGroup2BackwardHotkeys?.Select(x => this._configuration.StringToKey(x)), false, this._configuration.CycleGroup2ClientsOrder);
-
-			RegisterCycleClientHotkey(this._configuration.CycleGroup3ForwardHotkeys?.Select(x => this._configuration.StringToKey(x)), true, this._configuration.CycleGroup3ClientsOrder);
-			RegisterCycleClientHotkey(this._configuration.CycleGroup3BackwardHotkeys?.Select(x => this._configuration.StringToKey(x)), false, this._configuration.CycleGroup3ClientsOrder);
-
-			RegisterCycleClientHotkey(this._configuration.CycleGroup4ForwardHotkeys?.Select(x => this._configuration.StringToKey(x)), true, this._configuration.CycleGroup4ClientsOrder);
-			RegisterCycleClientHotkey(this._configuration.CycleGroup4BackwardHotkeys?.Select(x => this._configuration.StringToKey(x)), false, this._configuration.CycleGroup4ClientsOrder);
-
-			RegisterCycleClientHotkey(this._configuration.CycleGroup5ForwardHotkeys?.Select(x => this._configuration.StringToKey(x)), true, this._configuration.CycleGroup5ClientsOrder);
-			RegisterCycleClientHotkey(this._configuration.CycleGroup5BackwardHotkeys?.Select(x => this._configuration.StringToKey(x)), false, this._configuration.CycleGroup5ClientsOrder);
-			RegisterQuickSwitchHotkeys();
-			RegisterQuickHideHotkey();
-
-			RegisterMinimizeAllClientsHotkey(this._configuration.MinimizeAllClientsHotkeys?.Select(x => this._configuration.StringToKey(x)));
-			RegisterRefreshMinimizedClientsHotkey(this._configuration.RefreshMinimizedClientsHotkeys?.Select(x => this._configuration.StringToKey(x)));
-
-			// Also hot-reload per-client individual hotkeys
-			foreach (var kv in this._thumbnailViews)
-			{
-				var view = kv.Value;
-				try
-				{
-					view.RegisterHotkey(this._configuration.GetClientHotkey(view.Title));
-				}
-				catch { /* ignore single view failure */ }
+				this.ShowHotkeyWarning(error);
 			}
 		}
 	}

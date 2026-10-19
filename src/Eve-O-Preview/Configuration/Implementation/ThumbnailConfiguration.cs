@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using Newtonsoft.Json;
+using EveOPreview.UI.Hotkeys;
 
 namespace EveOPreview.Configuration.Implementation
 {
@@ -20,7 +21,7 @@ namespace EveOPreview.Configuration.Implementation
 		{
 			this.ConfigVersion = 1;
 
-			this.Language = "en-US";
+			this.Language = "zh-CN";
 
 			this.CycleGroup1ForwardHotkeys = new List<string> { "F14", "Control+F14" };
 			this.CycleGroup1BackwardHotkeys = new List<string> { "F13", "Control+F13" };
@@ -352,7 +353,7 @@ namespace EveOPreview.Configuration.Implementation
 		[JsonProperty]
 		private Dictionary<string, ClientLayout> ClientLayout { get; set; }
 		[JsonProperty]
-		private Dictionary<string, string> ClientHotkey { get; set; }
+		public Dictionary<string, string> ClientHotkey { get; set; }
 		[JsonProperty]
 		public List<string> MinimizeAllClientsHotkeys { get; set; }
 		[JsonProperty]
@@ -439,26 +440,25 @@ namespace EveOPreview.Configuration.Implementation
 
 		public Keys GetClientHotkey(string currentClient)
 		{
-			string hotkey;
-			if (this.ClientHotkey.TryGetValue(currentClient, out hotkey))
-			{
-				// Protect from incorrect values
-				object rawValue = (new KeysConverter()).ConvertFromInvariantString(hotkey);
-				return rawValue != null ? (Keys)rawValue : Keys.None;
-			}
-
-			return Keys.None;
+			return this.ClientHotkey != null && currentClient != null && this.ClientHotkey.TryGetValue(currentClient, out string hotkey)
+				? this.StringToKey(hotkey) : Keys.None;
 		}
 
 		public void SetClientHotkey(string currentClient, Keys hotkey)
 		{
+			if (string.IsNullOrWhiteSpace(currentClient)) return;
+			this.ClientHotkey ??= new Dictionary<string, string>();
+			if (hotkey == Keys.None)
+			{
+				this.ClientHotkey.Remove(currentClient);
+				return;
+			}
 			this.ClientHotkey[currentClient] = (new KeysConverter()).ConvertToInvariantString(hotkey);
 		}
 
 		public Keys StringToKey(string hotkey)
 		{
-			object rawValue = (new KeysConverter()).ConvertFromInvariantString(hotkey);
-			return rawValue != null ? (Keys)rawValue : Keys.None;
+			return HotkeyGesture.TryParse(hotkey, out Keys key) ? key : Keys.None;
 		}
 
 		public bool IsPriorityClient(string currentClient)
@@ -485,6 +485,24 @@ namespace EveOPreview.Configuration.Implementation
 		/// </summary>
 		public void ApplyRestrictions()
 		{
+			this.ClientHotkey ??= new Dictionary<string, string>();
+			this.CycleGroup1ForwardHotkeys ??= new List<string>();
+			this.CycleGroup1BackwardHotkeys ??= new List<string>();
+			this.CycleGroup2ForwardHotkeys ??= new List<string>();
+			this.CycleGroup2BackwardHotkeys ??= new List<string>();
+			this.CycleGroup3ForwardHotkeys ??= new List<string>();
+			this.CycleGroup3BackwardHotkeys ??= new List<string>();
+			this.CycleGroup4ForwardHotkeys ??= new List<string>();
+			this.CycleGroup4BackwardHotkeys ??= new List<string>();
+			this.CycleGroup5ForwardHotkeys ??= new List<string>();
+			this.CycleGroup5BackwardHotkeys ??= new List<string>();
+			this.CycleGroup1ClientsOrder ??= new Dictionary<string, int>();
+			this.CycleGroup2ClientsOrder ??= new Dictionary<string, int>();
+			this.CycleGroup3ClientsOrder ??= new Dictionary<string, int>();
+			this.CycleGroup4ClientsOrder ??= new Dictionary<string, int>();
+			this.CycleGroup5ClientsOrder ??= new Dictionary<string, int>();
+			this.MinimizeAllClientsHotkeys ??= new List<string>();
+			this.RefreshMinimizedClientsHotkeys ??= new List<string>();
 			// Migrate configurations created by the official build, which persisted
 			// the old 192x108 lower bound in JSON.
 			this.ThumbnailMinimumSize = CustomMinimumThumbnailSize;
