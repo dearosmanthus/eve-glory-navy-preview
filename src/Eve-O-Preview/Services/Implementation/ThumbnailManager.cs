@@ -55,6 +55,7 @@ namespace EveOPreview.Services
 		private List<HotkeyBinding> _activeHotkeyBindings = new List<HotkeyBinding>();
 		private HotkeySettingsSnapshot _appliedHotkeySettings;
 		private bool _hotkeyCaptureActive;
+		private bool _hotkeysStopped;
 		private string _initialHotkeyWarning;
 		private readonly HashSet<Keys> _unavailableClientHotkeys = new HashSet<Keys>();
 		#endregion
@@ -447,9 +448,13 @@ namespace EveOPreview.Services
 				if (!handler.Register())
 				{
 					int code = handler.LastRegistrationError;
-					errors.Add(this.HotkeyText(
-						$"{binding.Description}（{HotkeyGesture.Format(binding.Key)}）无法注册，可能被其他程序或系统占用。错误码：{code}。",
-						$"Cannot register {binding.Description} ({HotkeyGesture.Format(binding.Key)}); another application or Windows may be using it. Error: {code}."));
+					errors.Add(HotkeyGesture.IsMouseGesture(binding.Key)
+						? this.HotkeyText(
+							$"{binding.Description}（{HotkeyGesture.Format(binding.Key)}）无法启用鼠标监听，或此组合已在本软件中使用。错误码：{code}。",
+							$"Cannot enable mouse listening for {binding.Description} ({HotkeyGesture.Format(binding.Key)}), or this combination is already bound in this application. Error: {code}.")
+						: this.HotkeyText(
+							$"{binding.Description}（{HotkeyGesture.Format(binding.Key)}）无法注册，可能被其他程序或系统占用。错误码：{code}。",
+							$"Cannot register {binding.Description} ({HotkeyGesture.Format(binding.Key)}); another application or Windows may be using it. Error: {code}."));
 					handler.Dispose();
 					if (!allowPartial)
 					{
@@ -476,6 +481,12 @@ namespace EveOPreview.Services
 
 		public bool TryApplyHotkeys(out string error)
 		{
+			if (this._hotkeysStopped)
+			{
+				this._appliedHotkeySettings?.Restore(this._configuration);
+				error = this.HotkeyText("快捷键服务已停止，请重新启动后再应用设置。", "The hotkey service is stopped. Restart it before applying settings.");
+				return false;
+			}
 			if (this._hotkeyCaptureActive)
 			{
 				this._appliedHotkeySettings?.Restore(this._configuration);
@@ -525,7 +536,7 @@ namespace EveOPreview.Services
 			{
 				this.ReleaseRegisteredHotkeys();
 			}
-			else if (!this.RegisterHotkeyBindings(this._activeHotkeyBindings, true, out _, out string error))
+			else if (!this._hotkeysStopped && !this.RegisterHotkeyBindings(this._activeHotkeyBindings, true, out _, out string error))
 			{
 				this.ShowHotkeyWarning(error);
 			}
@@ -533,12 +544,13 @@ namespace EveOPreview.Services
 
 		private void ShowHotkeyWarning(string error)
 		{
-			MessageBox.Show(error, this.HotkeyText("快捷键设置", "Hotkey settings"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+			Form owner = Form.ActiveForm ?? Application.OpenForms.OfType<MainForm>().FirstOrDefault();
+			MessageBox.Show(owner, error, this.HotkeyText("快捷键设置", "Hotkey settings"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
 		}
 
 		private void SynchronizeClientHotkeys()
 		{
-			if (this._hotkeyCaptureActive)
+			if (this._hotkeyCaptureActive || this._hotkeysStopped)
 			{
 				return;
 			}
@@ -567,6 +579,14 @@ namespace EveOPreview.Services
 
 		public void Start()
 		{
+			if (this._hotkeysStopped)
+			{
+				this._hotkeysStopped = false;
+				if (!this._hotkeyCaptureActive && !this.RegisterHotkeyBindings(this._activeHotkeyBindings, true, out _, out string restoreError))
+				{
+					this.ShowHotkeyWarning(restoreError);
+				}
+			}
 			this._thumbnailUpdateTimer.Start();
 
 			this.RefreshThumbnails();
@@ -581,6 +601,8 @@ namespace EveOPreview.Services
 		public void Stop()
 		{
 			this._thumbnailUpdateTimer.Stop();
+			this._hotkeysStopped = true;
+			this.ReleaseRegisteredHotkeys();
 		}
 
 		private void ThumbnailUpdateTimerTick(object sender, EventArgs e)

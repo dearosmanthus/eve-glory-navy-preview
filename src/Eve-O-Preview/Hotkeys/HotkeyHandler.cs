@@ -76,6 +76,20 @@ namespace EveOPreview.UI.Hotkeys
 				return false;
 			}
 
+			if (HotkeyGesture.IsMouseGesture(this.KeyCode))
+			{
+				if (!MouseHotkeyRegistry.Register(this.KeyCode, () =>
+				{
+					if (this.IsRegistered) this.OnPressed();
+				}, out int error))
+				{
+					this.LastRegistrationError = error;
+					return false;
+				}
+				this.IsRegistered = true;
+				return true;
+			}
+
 			// Remove all modifiers from the 'main' hotkey
 			uint key = (uint)this.KeyCode & (~(uint)Keys.Alt) & (~(uint)Keys.Control) & (~(uint)Keys.Shift);
 
@@ -110,6 +124,12 @@ namespace EveOPreview.UI.Hotkeys
 
 			this.IsRegistered = false;
 
+			if (HotkeyGesture.IsMouseGesture(this.KeyCode))
+			{
+				MouseHotkeyRegistry.Unregister(this.KeyCode);
+				return;
+			}
+
 			Application.RemoveMessageFilter(this);
 
 			// Clean up after ourselves
@@ -119,7 +139,7 @@ namespace EveOPreview.UI.Hotkeys
 		#region IMessageFilter
 		public bool PreFilterMessage(ref Message message)
 		{
-			return this.IsRegistered
+			return this.IsRegistered && !HotkeyGesture.IsMouseGesture(this.KeyCode)
 					&& (message.Msg == HotkeyHandlerNativeMethods.WM_HOTKEY)
 					&& (message.WParam.ToInt32() == this._hotkeyId)
 					&& this.OnPressed();

@@ -7,8 +7,8 @@
 	  <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 	  <RootNamespace>EveOPreview</RootNamespace>
 	  <AssemblyName>EVE-O-Preview-Glory-Navy</AssemblyName>
-	  <Version>8.1.0.0-glory-navy-features</Version>
-	  <InformationalVersion>8.1.0.0-glory-navy-features</InformationalVersion>
+	  <Version>8.1.1.0-glory-navy-mouse</Version>
+	  <InformationalVersion>8.1.1.0-glory-navy-mouse</InformationalVersion>
 	  <AssemblyTitle>EVE-O-Preview 荣耀海军定制版</AssemblyTitle>
 	  <Product>EVE-O-Preview 荣耀海军定制版</Product>
 	  <Company>Glory Navy / 荣耀海军</Company>
@@ -24,7 +24,7 @@
     <UpdateRequired>false</UpdateRequired>
     <MapFileExtensions>true</MapFileExtensions>
     <ApplicationRevision>0</ApplicationRevision>
-    <ApplicationVersion>8.1.0.0</ApplicationVersion>
+    <ApplicationVersion>8.1.1.0</ApplicationVersion>
     <IsWebBootstrapper>false</IsWebBootstrapper>
     <UseApplicationTrust>false</UseApplicationTrust>
     <BootstrapperEnabled>true</BootstrapperEnabled>
@@ -72,8 +72,8 @@
   <PropertyGroup>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <UseWPF>True</UseWPF>
-    <AssemblyVersion>8.1.0.0</AssemblyVersion>
-    <FileVersion>8.1.0.0</FileVersion>
+    <AssemblyVersion>8.1.1.0</AssemblyVersion>
+    <FileVersion>8.1.1.0</FileVersion>
     <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Build|AnyCPU'">

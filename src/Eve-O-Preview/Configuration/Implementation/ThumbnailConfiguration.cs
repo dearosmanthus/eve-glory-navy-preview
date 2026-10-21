@@ -481,7 +481,7 @@ namespace EveOPreview.Configuration.Implementation
 				this.ClientHotkey.Remove(currentClient);
 				return;
 			}
-			this.ClientHotkey[currentClient] = (new KeysConverter()).ConvertToInvariantString(hotkey);
+			this.ClientHotkey[currentClient] = HotkeyGesture.Format(hotkey);
 		}
 
 		public Keys StringToKey(string hotkey)

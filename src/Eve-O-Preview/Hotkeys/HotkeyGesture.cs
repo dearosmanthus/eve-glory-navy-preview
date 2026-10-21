@@ -56,7 +56,14 @@ namespace EveOPreview.UI.Hotkeys
 				&& code != Keys.LShiftKey && code != Keys.RShiftKey && code != Keys.LControlKey && code != Keys.RControlKey
 				&& code != Keys.LMenu && code != Keys.RMenu && code != Keys.LWin && code != Keys.RWin
 				&& code != Keys.ProcessKey && code != Keys.Packet
-				&& code != Keys.LButton && code != Keys.RButton && code != Keys.MButton && code != Keys.XButton1 && code != Keys.XButton2;
+				&& code != Keys.LButton && code != Keys.RButton;
+		}
+
+		/// <summary>Only the standard middle button and the two Windows X buttons are native mouse gestures.</summary>
+		public static bool IsMouseGesture(Keys keys)
+		{
+			Keys code = keys & Keys.KeyCode;
+			return code == Keys.MButton || code == Keys.XButton1 || code == Keys.XButton2;
 		}
 
 		public static string Format(Keys keys)

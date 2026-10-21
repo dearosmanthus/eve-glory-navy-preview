@@ -26,6 +26,8 @@ internal static partial class Program
         }
         RunIsolatedUiChild("--sync-ui-child", "character-copy-ui", "isolated character-copy dialog lifecycle completes");
         RunIsolatedUiChild("--presenter-groups-child", "dynamic-group-presenter", "real dynamic-group presenter integration completes");
+        RunIsolatedUiChild("--mouse-backend-child", "mouse-backend", "mouse input and mixed-manager regression completes");
+        RunIsolatedUiChild("--mouse-ui-child", "mouse-capture-ui", "mouse capture modal regression completes");
     }
 
     private static void RunIsolatedUiChild(string mode, string directory, string label, string? argument = null)

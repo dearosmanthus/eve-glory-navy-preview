@@ -1,6 +1,7 @@
 using EveOPreview.Configuration;
 using EveOPreview.Configuration.Implementation;
 using EveOPreview.Services;
+using EveOPreview.UI.Hotkeys;
 using MediatR;
 using System;
 using System.Collections.Generic;
@@ -780,24 +781,9 @@ namespace EveOPreview.View
 		// <returns>Returns true if valid, otherwise false</returns>
 		private bool ValidateAndMaybeWarnHotkey(string keyText)
 		{
-			Keys parsed = Keys.None;
-			try
+			if (!HotkeyGesture.TryParse(keyText, out Keys parsed) || parsed == Keys.None)
 			{
-				var conv = new KeysConverter();
-				var obj = conv.ConvertFromInvariantString(keyText);
-				if (obj is Keys k)
-				{
-					parsed = k;
-				}
-			}
-			catch
-			{
-				parsed = Keys.None;
-			}
-
-			if (!HotkeyCaptureDialog.IsSupportedKey(parsed))
-			{
-				MessageBox.Show(LocalizationExtensions.GetString("Messages.InvalidHotkey", "Invalid hotkey"), LocalizationExtensions.GetString("Messages.Error", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				MessageBox.Show(this, LocalizationExtensions.GetString("Messages.InvalidHotkey", "Invalid hotkey"), LocalizationExtensions.GetString("Messages.Error", "Error"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
 				return false;
 			}
 
