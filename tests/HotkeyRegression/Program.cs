@@ -33,6 +33,23 @@ internal static partial class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         if (args.Contains("--preview")) return Preview();
+        if (args.Contains("--foreground-fixture")) return ForegroundFixture();
+        if (args.Contains("--foreground-native-only"))
+        {
+            Run("isolated real native foreground fixture", NativeForegroundFixtureTests);
+            return PrintResult();
+        }
+        if (args.Contains("--foreground-manager-only"))
+        {
+            Run("foreground activation failure manager behavior", WindowActivationManagerTests);
+            return PrintResult();
+        }
+        if (args.Contains("--foreground-only"))
+        {
+            Run("bounded foreground activation worker", ForegroundActivationTests);
+            Run("foreground activation failure manager behavior", WindowActivationManagerTests);
+            return PrintResult();
+        }
         if (args.Contains("--settings-child")) return SettingsLifecycleChild(args);
         if (args.Contains("--sync-ui-child"))
         {
@@ -51,6 +68,8 @@ internal static partial class Program
         }
         if (args.Contains("--mouse-backend-child"))
         {
+            Run("bounded foreground activation worker", ForegroundActivationTests);
+            Run("foreground activation failure manager behavior", WindowActivationManagerTests);
             Run("native mouse decoding and listener lifecycle", MouseBackendTests);
             Run("mixed mouse and keyboard manager integration", MouseIntegrationTests);
             return PrintResult();
@@ -481,9 +500,16 @@ internal static partial class Program
             foreach (string pageName in new[] { "QuickActionsTabPage", "ClientsTabPage" })
             {
                 TabPage page = tabs.TabPages.Cast<TabPage>().Single(x => x.Name == pageName);
+                if (form.WindowState == FormWindowState.Minimized || !form.Visible)
+                {
+                    Console.WriteLine($"FIXTURE PRECONDITION restored before rendering: {language}/{pageName}; state={form.WindowState}; visible={form.Visible}");
+                    ((Form)form).Show();
+                    form.WindowState = FormWindowState.Normal;
+                }
                 tabs.SelectedTab = page;
                 form.PerformLayout();
                 Application.DoEvents();
+                Console.WriteLine($"RENDER STATE {language}/{pageName}: window={form.WindowState}; size={form.Size}; client={form.ClientSize}");
                 string path = Path.Combine(screenshots, $"settings-{language}-{pageName}-96dpi.png");
                 using var bitmap = new System.Drawing.Bitmap(form.Width, form.Height);
                 form.DrawToBitmap(bitmap, new System.Drawing.Rectangle(System.Drawing.Point.Empty, form.Size));

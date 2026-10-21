@@ -195,6 +195,13 @@ internal static partial class Program
     private static void ExerciseCaptureButton(MainForm form, string buttonName, Keys result, int modalDuration = 100)
     {
         Progress("click " + buttonName + " => " + result);
+        if (form.WindowState == FormWindowState.Minimized || !form.Visible)
+        {
+            Progress($"restore isolated fixture before recording: state={form.WindowState}; visible={form.Visible}");
+            Call(form, "RestoreMainForm_Handler", null, EventArgs.Empty);
+            Application.DoEvents();
+        }
+        Console.WriteLine($"CAPTURE PRECONDITION {buttonName}: state={form.WindowState}; visible={form.Visible}; enabled={form.Enabled}");
         bool dialogSeen = false;
         var elapsed = Stopwatch.StartNew();
         using var modalTimer = new System.Windows.Forms.Timer { Interval = 40 };
@@ -218,7 +225,7 @@ internal static partial class Program
         modalTimer.Start();
         Click(form, buttonName);
         Application.DoEvents();
-        Console.WriteLine($"MODAL RETURN seen={dialogSeen}, settingsEnabled={form.Enabled}");
+        Console.WriteLine($"MODAL RETURN seen={dialogSeen}, settingsEnabled={form.Enabled}, state={form.WindowState}, visible={form.Visible}");
         Check(dialogSeen && form.Enabled && IsWindowEnabled(form.Handle), buttonName + " modal accepts/cancels and returns control to settings");
     }
 

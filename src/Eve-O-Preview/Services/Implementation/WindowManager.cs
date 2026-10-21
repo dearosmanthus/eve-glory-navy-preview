@@ -201,12 +201,13 @@ namespace EveOPreview.Services.Implementation
 #if WINDOWS
 		public void ActivateWindow(IntPtr handle, AnimationStyle animation, bool focus)
 		{
-			if (focus)
-			{
-				User32NativeMethods.SetForegroundWindow(handle);
-				User32NativeMethods.SetFocus(handle);
-			}
+			this.TryActivateWindow(handle, animation, focus);
+		}
 
+		public bool TryActivateWindow(IntPtr handle, AnimationStyle animation, bool focus)
+		{
+			if (handle == IntPtr.Zero) return false;
+			// Restore before requesting foreground, not after a failed activation.
 			uint style = User32NativeMethods.GetWindowLong(handle, InteropConstants.GWL_STYLE);
 
 			if ((style & InteropConstants.WS_MINIMIZE) == InteropConstants.WS_MINIMIZE)
@@ -223,6 +224,23 @@ namespace EveOPreview.Services.Implementation
 						break;
 				}
 			}
+			if (!focus) return true;
+			var ownControl = System.Windows.Forms.Control.FromHandle(handle);
+			if (ownControl != null && !ownControl.InvokeRequired)
+			{
+				// Same-thread activation cannot wait on a foreign input queue.
+				// Do not ask a background worker to ping the UI that is waiting
+				// for that worker (e.g. returning to our own settings window).
+				return User32NativeMethods.GetForegroundWindow() == handle || User32NativeMethods.SetForegroundWindow(handle);
+			}
+			// Cross-process activation is isolated from both the application UI
+			// and the low-level mouse hook. Never attach either of those threads.
+			bool activated = ForegroundWindowActivator.TryActivate(handle, out string reason);
+			if (!activated)
+			{
+				this.WriteToLog($"[{DateTime.Now:O}] Window activation not confirmed: target=0x{handle.ToInt64():X}; {reason}");
+			}
+			return activated;
 		}
 
 		public void MinimizeWindow(IntPtr handle, AnimationStyle animation, bool enableAnimation)

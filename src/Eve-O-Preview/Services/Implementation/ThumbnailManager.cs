@@ -107,17 +107,9 @@ namespace EveOPreview.Services
 		public void SetActive(KeyValuePair<IntPtr, IThumbnailView> newClient)
 		{
 			System.Diagnostics.Debug.WriteLine($"SetActive {newClient.Value.Title}");
-
-			this.GetActiveClient()?.ClearBorder();
-
-/*
-#if LINUX
-			this._windowManager.ActivateWindow(newClient.Key, newClient.Value.Title, true);
-#else
-			this._windowManager.ActivateWindow(newClient.Key, this._configuration.WindowsAnimationStyle, true);
-#endif
-*/
-			this.SwitchActiveClient(newClient.Key, newClient.Value.Title);
+			IThumbnailView previous = this.GetActiveClient();
+			if (!this.SwitchActiveClient(newClient.Key, newClient.Value.Title)) return;
+			previous?.ClearBorder();
 
 			newClient.Value.SetHighlight();
 			newClient.Value.Refresh(true);
@@ -301,7 +293,6 @@ namespace EveOPreview.Services
 						(isForwards ? _thumbnailViews.OrderBy(x => x.Value.Id.ToInt64()) : _thumbnailViews.OrderByDescending(x => x.Value.Id.ToInt64())).FirstOrDefault(x => x.Value.Title == t.Key && !x.Value.IsExcludedFromCycleGroup)
 						: _thumbnailViews.First(x => x.Value.Title == t.Key && !x.Value.IsExcludedFromCycleGroup);
 					SetActive(ptr);
-					_activeClient = (ptr.Key, t.Key);
 					return;
 				}
 			}
@@ -768,7 +759,9 @@ namespace EveOPreview.Services
 			// No need to minimize EVE clients when switching out to non-EVE window (like thumbnail)
 			if (!string.IsNullOrEmpty(foregroundWindowTitle))
 			{
-				this.SwitchActiveClient(foregroundWindowHandle, foregroundWindowTitle);
+				// A refresh only observes foreground. It must never pull focus
+				// back to a stale snapshot after the user switches elsewhere.
+				this.SwitchActiveClient(foregroundWindowHandle, foregroundWindowTitle, false);
 			}
 
 			bool hideOnLostFocus = this._configuration.HideThumbnailsOnLostFocus && !(isClientWindow || isMainWindowActive);
@@ -962,20 +955,21 @@ namespace EveOPreview.Services
 			this._ignoreViewEvents = true;
 		}
 
-		private void SwitchActiveClient(IntPtr foregroundClientHandle, string foregroundClientTitle)
+		private bool SwitchActiveClient(IntPtr foregroundClientHandle, string foregroundClientTitle, bool requestActivation = true)
 		{
-			// Check if any actions are needed
-			if (this._activeClient.Handle == foregroundClientHandle)
+			// An internally selected client need not still own foreground after
+			// the user has interacted with another application or game window.
+			if (this._windowManager.GetForegroundWindowHandle() != foregroundClientHandle)
 			{
-				return;
-			}
-			System.Diagnostics.Debug.WriteLine($"SwitchActiveClient {foregroundClientTitle}");
-
+				if (!requestActivation) return false;
 #if LINUX
-   			    this._windowManager.ActivateWindow(foregroundClientHandle, foregroundClientTitle, true);
+				if (!this._windowManager.TryActivateWindow(foregroundClientHandle, foregroundClientTitle, true)) return false;
 #else
-			this._windowManager.ActivateWindow(foregroundClientHandle, this._configuration.WindowsAnimationStyle, true);
+				if (!this._windowManager.TryActivateWindow(foregroundClientHandle, this._configuration.WindowsAnimationStyle, true)) return false;
 #endif
+			}
+			if (this._activeClient.Handle == foregroundClientHandle) return true;
+			System.Diagnostics.Debug.WriteLine($"SwitchActiveClient {foregroundClientTitle}");
 
 			// Minimize the currently active client if needed
 			if (this._configuration.MinimizeInactiveClients && !this._configuration.KeepMinimizedClientsLive && !this._configuration.IsPriorityClient(this._activeClient.Title))
@@ -987,6 +981,7 @@ namespace EveOPreview.Services
 			}
 
 			this._activeClient = (foregroundClientHandle, foregroundClientTitle);
+			return true;
 		}
 
 		private void ThumbnailViewFocused(IntPtr id)

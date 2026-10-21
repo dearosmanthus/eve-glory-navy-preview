@@ -11,8 +11,18 @@ namespace EveOPreview.Services
 		IntPtr GetForegroundWindowHandle();
 #if LINUX
 		void ActivateWindow(IntPtr handle, string windowName, bool focus);
+		bool TryActivateWindow(IntPtr handle, string windowName, bool focus)
+		{
+			this.ActivateWindow(handle, windowName, focus);
+			return true;
+		}
 #else
 		void ActivateWindow(IntPtr handle, AnimationStyle animation, bool focus);
+		bool TryActivateWindow(IntPtr handle, AnimationStyle animation, bool focus)
+		{
+			this.ActivateWindow(handle, animation, focus);
+			return true;
+		}
 #endif
 		void MinimizeWindow(IntPtr handle, AnimationStyle animation, bool enableAnimation);
 		void RestoreWindowInBackground(IntPtr handle);
